@@ -34,7 +34,7 @@ tasks:
     objects:
       -
         name: pick_object_left
-        path: "pick_and_place/pre-train-pick/assets/omniobject3d-banana/omniobject3d-banana_001/Aligned_obj.usd"
+        path: pick_and_place/pre-train-pick/assets/omniobject3d-banana/omniobject3d-banana_001/Aligned_obj.usd
         target_class: RigidObject
         dataset: oo3d
         category: "omniobject3d-banana"

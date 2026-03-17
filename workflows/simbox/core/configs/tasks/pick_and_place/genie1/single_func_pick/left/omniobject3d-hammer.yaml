@@ -31,7 +31,7 @@ tasks:
     objects:
       -
         name: pick_object_left
-        path: pick_and_place/functional-pick-assets/omniobject3d-hammer/omniobject3d-hammer_003/Aligned_obj.usd
+        path: pick_and_place/functional-pick-assets/omniobject3d-hammer/omniobject3d-hammer_001/Aligned_obj.usd
         target_class: RigidObject
         dataset: oo3d
         category: "omniobject3d-hammer"
