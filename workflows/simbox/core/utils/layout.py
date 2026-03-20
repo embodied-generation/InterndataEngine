@@ -466,7 +466,7 @@ def optimize_2d_manip_layout(
 
     obj_pcds = []
     for obj, polygon in zip(optimize_objs, reg_polygons):
-        polygon = get_platform_available_polygon(polygon, obj_pcds, visualize=True)
+        polygon = get_platform_available_polygon(polygon, obj_pcds, visualize=False)
         obj_mesh = recursive_parse_new(obj.prim)
         obj_mesh = o3d.geometry.TriangleMesh(
             vertices=o3d.utility.Vector3dVector(obj_mesh[0]),
