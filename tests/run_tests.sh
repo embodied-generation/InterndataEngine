@@ -13,9 +13,13 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 LOG_FILE="tests/test_results_${TIMESTAMP}.log"
 SUMMARY_FILE="tests/test_summary_${TIMESTAMP}.txt"
 TEMP_LOG="tests/temp_test_output.log"
+ISAAC_SIM_PYTHON="${ISAAC_SIM_PYTHON:-/mnt/exdisk1/isaac-sim-4.1/python.sh}"
 
 declare -a TEST_SUITES=()
-TEST_SUITES+=("SimBox Tests (Isaac Sim):3:/isaac-sim/python.sh tests/integration/simbox/test_simbox.py")
+TEST_SUITES+=("SimBox Mobile Unit Tests:22:PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest test/unit/mobile -q")
+TEST_SUITES+=("SimBox Mobile Smoke (Isaac Sim):1:PYTHONPATH=. ${ISAAC_SIM_PYTHON} tests/integration/simbox/runners/simbox_mobile_smoke_runner.py")
+TEST_SUITES+=("SplitAloha Mobile Navigation (Isaac Sim):1:PYTHONPATH=. ${ISAAC_SIM_PYTHON} tests/integration/simbox/test_mobile_module.py")
+TEST_SUITES+=("SimBox Tests (Isaac Sim):3:PYTHONPATH=. ${ISAAC_SIM_PYTHON} tests/integration/simbox/test_simbox.py")
 
 TOTAL_SUITES=${#TEST_SUITES[@]}
 
@@ -24,6 +28,9 @@ echo "=============================================="
 echo -e "${BOLD}${CYAN}TEST EXECUTION PLAN:${NC}"
 echo -e "  ${BOLD}Total Test Suites: ${TOTAL_SUITES}${NC}"
 echo -e "  ${BOLD}SimBox Scenarios Covered:${NC}"
+echo -e "    - Mobile Unit: Virtual base navigation modules"
+echo -e "    - Mobile Smoke: Isaac Sim fast navigation validation"
+echo -e "    - SplitAloha Mobile: Real asset + real mobile config navigation"
 echo -e "    - Pipeline: Full end-to-end workflow"
 echo -e "    - Plan: Trajectory planning generation"
 echo -e "    - Render: Scene rendering with validation"
@@ -45,7 +52,7 @@ run_test_suite() {
     TOTAL_TEST_SUITES=$((TOTAL_TEST_SUITES + 1))
 
     echo -e "${BOLD}${BLUE}[$current_suite/$TOTAL_SUITES] Starting: $suite_name${NC}"
-    echo -e "  ${CYAN}-> Running ${expected_sessions} SimBox tests with Isaac Sim${NC}"
+    echo -e "  ${CYAN}-> Running ${expected_sessions} tests${NC}"
 
     echo "Test Suite: $suite_name" >> "$LOG_FILE"
     echo "Expected Test Functions: $expected_sessions" >> "$LOG_FILE"

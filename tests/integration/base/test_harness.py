@@ -16,6 +16,8 @@ from .utils import set_test_seeds
 sys.path.append("./")
 sys.path.append("./data_engine")
 
+DEFAULT_ISAAC_SIM_PYTHON = os.environ.get("ISAAC_SIM_PYTHON", "/mnt/exdisk1/isaac-sim-4.1/python.sh")
+
 
 # Import data_engine modules only when needed to avoid import errors during framework testing
 def _import_data_engine_modules():
@@ -84,10 +86,12 @@ class IntegrationTestHarness:
                         self.config.load_stage.layout_random_generator.args.random_num = self.random_num
                     if "input_dir" in self.config.load_stage.layout_random_generator.args:
                         if "simbox" in self.config.name:
-                            input_path = (
+                            local_input_path = os.path.abspath("output/simbox_plan_ci/seq_path/BananaBaseTask/plan")
+                            shared_input_path = (
                                 "/shared/smartbot_new/zhangyuchang/CI/manip/"
                                 "simbox/simbox_plan_ci/seq_path/BananaBaseTask/plan"
                             )
+                            input_path = local_input_path if os.path.exists(local_input_path) else shared_input_path
                             self.config.load_stage.layout_random_generator.args.input_dir = input_path
         if self.config and "plan_stage" in self.config:
             if "seq_planner" in self.config.plan_stage:
@@ -223,7 +227,7 @@ class IntegrationTestHarness:
             if os.environ.get("BLENDER_CUSTOM_PATH"):
                 cmd.extend(["--custom-blender-path", os.environ["BLENDER_CUSTOM_PATH"]])
         elif interpreter.endswith(".sh"):
-            # For scripts like /isaac-sim/python.sh
+            # For scripts like the Isaac Sim python launcher
             cmd = [interpreter, runner_script]
         else:
             cmd = [interpreter, runner_script]
@@ -271,7 +275,7 @@ class IntegrationTestHarness:
 
                 if comp == "simbox":
                     compare_cmd = [
-                        "/isaac-sim/python.sh",
+                        DEFAULT_ISAAC_SIM_PYTHON,
                         "tests/integration/data_comparators/simbox_comparator.py",
                         "--dir1",
                         output_dir,

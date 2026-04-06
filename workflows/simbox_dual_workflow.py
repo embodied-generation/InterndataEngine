@@ -45,6 +45,13 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
         self.scene_info = scene_info
         self.step_replay = False
         self.random_seed = random_seed
+        self._ros_base_command_controllers = {}
+        self._ros_base_bridges = {}
+        self._world_scan_publishers = {}
+        self._nav2_navigators = {}
+        self._ros_bridge_unavailable_reported = False
+        self._world_scan_unavailable_reported = False
+        self._nav2_unavailable_reported = False
         super().__init__(world, task_cfg_path)
 
     def parse_task_cfgs(self, task_cfg_path: str) -> list:
@@ -71,6 +78,10 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
                 robot.update(merged_cfg)
 
     def reset(self, need_preload: bool = True):
+        self._destroy_world_scan_publishers()
+        self._destroy_nav2_navigators()
+        self._destroy_ros_base_bridges()
+
         # source code noted this as debug, so it could be removed later
         from omni.isaac.core.utils.viewports import set_camera_view
 
@@ -153,13 +164,16 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
             global_collision_paths,
         )
         self.world.reset()
-        self.world.step(render=True)
+        self._step_world(render=True)
         self.controllers = self._initialize_controllers(self.task, self.task_cfg, self.world)
         self.skills = self._initialize_skills(self.task, self.task_cfg, self.controllers, self.world)
+        self._initialize_ros_base_bridges()
+        self._initialize_world_scan_publishers()
+        self._initialize_nav2_navigators()
 
         for _ in range(50):
             self._init_static_objects(self.task)
-            self.world.step(render=False)
+            self._step_world(render=False)
 
         self.logger = LmdbLogger(
             task_dir=self.task_cfg["data"]["task_dir"],
@@ -238,6 +252,267 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
                 controllers[robot["name"]][controller_name].reset()
         return controllers
 
+    def _initialize_ros_base_bridges(self):
+        self._destroy_ros_base_bridges()
+        self._ros_base_command_controllers = {}
+        self._ros_base_bridges = {}
+        try:
+            from .simbox.core.mobile import RangerMiniV3Controller, SplitAlohaIsaacBaseBridge
+        except Exception as exc:
+            if not self._ros_bridge_unavailable_reported:
+                print(f"[ros-base-bridge] ROS bridge unavailable, skip initialization: {exc}")
+                self._ros_bridge_unavailable_reported = True
+            return
+
+        for robot_name, robot in self.task.robots.items():
+            if not hasattr(robot, "get_base_interface") or not hasattr(robot, "apply_base_command"):
+                continue
+
+            try:
+                base_interface = robot.get_base_interface()
+            except Exception:
+                continue
+
+            base_cfg = base_interface.get("base_cfg", {}) if isinstance(base_interface, dict) else {}
+            ros_cfg = base_cfg.get("ros", {}) if isinstance(base_cfg, dict) else {}
+            if not isinstance(ros_cfg, dict) or not ros_cfg:
+                continue
+            if not bool(ros_cfg.get("enabled", True)):
+                continue
+            if ros_cfg.get("command_type") != "ranger_driver":
+                print(f"[ros-base-bridge] Skip '{robot_name}': command_type must be 'ranger_driver'")
+                continue
+
+            controller_node_name = f"{robot_name}_ranger_mini_v3_controller".replace("-", "_")
+            bridge_node_name = f"{robot_name}_isaac_base_bridge".replace("-", "_")
+            controller = None
+            bridge = None
+            try:
+                controller = RangerMiniV3Controller(base_cfg, node_name=controller_node_name)
+                bridge = SplitAlohaIsaacBaseBridge(robot, node_name=bridge_node_name)
+            except Exception as exc:
+                print(f"[ros-base-bridge] Failed to initialize bridge for '{robot_name}': {exc}")
+                if controller is not None:
+                    try:
+                        controller.destroy()
+                    except Exception:
+                        pass
+                if bridge is not None:
+                    try:
+                        bridge.destroy()
+                    except Exception:
+                        pass
+                continue
+            self._ros_base_command_controllers[robot_name] = controller
+            self._ros_base_bridges[robot_name] = bridge
+
+        if self._ros_base_bridges:
+            robot_names = sorted(self._ros_base_bridges.keys())
+            print(f"[ros-base-bridge] Initialized {len(robot_names)} bridge(s): {robot_names}")
+
+    def _step_ros_base_bridges(self):
+        if not self._ros_base_bridges:
+            return
+
+        broken_robot_names = []
+        for robot_name, controller in list(self._ros_base_command_controllers.items()):
+            try:
+                controller.step()
+            except Exception as exc:
+                print(f"[ros-base-bridge] Command controller step failed for '{robot_name}': {exc}")
+                broken_robot_names.append(robot_name)
+
+        for robot_name, bridge in list(self._ros_base_bridges.items()):
+            try:
+                bridge.step()
+            except Exception as exc:
+                print(f"[ros-base-bridge] Bridge step failed for '{robot_name}': {exc}")
+                broken_robot_names.append(robot_name)
+
+        for robot_name in set(broken_robot_names):
+            controller = self._ros_base_command_controllers.pop(robot_name, None)
+            if controller is not None:
+                try:
+                    controller.destroy()
+                except Exception as exc:
+                    print(f"[ros-base-bridge] Command controller destroy failed for '{robot_name}': {exc}")
+
+            bridge = self._ros_base_bridges.pop(robot_name, None)
+            if bridge is None:
+                continue
+            try:
+                bridge.destroy()
+            except Exception as exc:
+                print(f"[ros-base-bridge] Bridge destroy failed for '{robot_name}': {exc}")
+
+    def _initialize_nav2_navigators(self):
+        self._destroy_nav2_navigators()
+        self._nav2_navigators = {}
+        try:
+            from .simbox.core.mobile import Nav2Navigator
+        except Exception as exc:
+            if not self._nav2_unavailable_reported:
+                print(f"[ros-nav2] Nav2 integration unavailable, skip initialization: {exc}")
+                self._nav2_unavailable_reported = True
+            return
+
+        for robot_name, robot in self.task.robots.items():
+            if not hasattr(robot, "get_base_interface"):
+                continue
+
+            try:
+                base_interface = robot.get_base_interface()
+            except Exception:
+                continue
+
+            base_cfg = base_interface.get("base_cfg", {}) if isinstance(base_interface, dict) else {}
+            ros_cfg = base_cfg.get("ros", {}) if isinstance(base_cfg, dict) else {}
+            nav2_cfg = ros_cfg.get("nav2", {}) if isinstance(ros_cfg, dict) else {}
+            if not isinstance(nav2_cfg, dict) or not bool(nav2_cfg.get("enabled", False)):
+                continue
+
+            navigator_node_name = f"{robot_name}_nav2_navigator".replace("-", "_")
+            navigator = None
+            try:
+                navigator = Nav2Navigator(robot=robot, base_cfg=base_cfg, node_name=navigator_node_name)
+            except Exception as exc:
+                print(f"[ros-nav2] Failed to initialize Nav2 navigator for '{robot_name}': {exc}")
+                if navigator is not None:
+                    try:
+                        navigator.destroy()
+                    except Exception:
+                        pass
+                continue
+            self._nav2_navigators[robot_name] = navigator
+
+        if self._nav2_navigators:
+            robot_names = sorted(self._nav2_navigators.keys())
+            print(f"[ros-nav2] Initialized {len(robot_names)} navigator(s): {robot_names}")
+
+    def _initialize_world_scan_publishers(self):
+        self._destroy_world_scan_publishers()
+        self._world_scan_publishers = {}
+        try:
+            from .simbox.core.mobile.nav2.world_scan_publisher import IsaacWorldScanPublisher
+        except Exception as exc:
+            if not self._world_scan_unavailable_reported:
+                print(f"[ros-world-scan] World-scan integration unavailable, skip initialization: {exc}")
+                self._world_scan_unavailable_reported = True
+            return
+
+        for robot_name, robot in self.task.robots.items():
+            if not hasattr(robot, "get_base_interface"):
+                continue
+
+            try:
+                base_interface = robot.get_base_interface()
+            except Exception:
+                continue
+
+            base_cfg = base_interface.get("base_cfg", {}) if isinstance(base_interface, dict) else {}
+            ros_cfg = base_cfg.get("ros", {}) if isinstance(base_cfg, dict) else {}
+            scan_cfg = ros_cfg.get("world_scan", {}) if isinstance(ros_cfg, dict) else {}
+            if not isinstance(scan_cfg, dict) or not bool(scan_cfg.get("enabled", False)):
+                continue
+
+            scan_node_name = f"{robot_name}_world_scan_publisher".replace("-", "_")
+            publisher = None
+            try:
+                publisher = IsaacWorldScanPublisher(robot=robot, base_cfg=base_cfg, node_name=scan_node_name)
+            except Exception as exc:
+                print(f"[ros-world-scan] Failed to initialize world-scan publisher for '{robot_name}': {exc}")
+                if publisher is not None:
+                    try:
+                        publisher.destroy()
+                    except Exception:
+                        pass
+                continue
+
+            self._world_scan_publishers[robot_name] = publisher
+
+        if self._world_scan_publishers:
+            robot_names = sorted(self._world_scan_publishers.keys())
+            print(f"[ros-world-scan] Initialized {len(robot_names)} publisher(s): {robot_names}")
+
+    def _step_world_scan_publishers(self):
+        if not self._world_scan_publishers:
+            return
+
+        broken_robot_names = []
+        for robot_name, publisher in list(self._world_scan_publishers.items()):
+            try:
+                publisher.step()
+            except Exception as exc:
+                print(f"[ros-world-scan] Publisher step failed for '{robot_name}': {exc}")
+                broken_robot_names.append(robot_name)
+
+        for robot_name in set(broken_robot_names):
+            publisher = self._world_scan_publishers.pop(robot_name, None)
+            if publisher is None:
+                continue
+            try:
+                publisher.destroy()
+            except Exception as exc:
+                print(f"[ros-world-scan] Publisher destroy failed for '{robot_name}': {exc}")
+
+    def _step_nav2_navigators(self):
+        if not self._nav2_navigators:
+            return
+
+        broken_robot_names = []
+        for robot_name, navigator in list(self._nav2_navigators.items()):
+            try:
+                navigator.step()
+            except Exception as exc:
+                print(f"[ros-nav2] Navigator step failed for '{robot_name}': {exc}")
+                broken_robot_names.append(robot_name)
+
+        for robot_name in set(broken_robot_names):
+            navigator = self._nav2_navigators.pop(robot_name, None)
+            if navigator is None:
+                continue
+            try:
+                navigator.destroy()
+            except Exception as exc:
+                print(f"[ros-nav2] Navigator destroy failed for '{robot_name}': {exc}")
+
+    def _destroy_nav2_navigators(self):
+        for robot_name, navigator in list(self._nav2_navigators.items()):
+            try:
+                navigator.destroy()
+            except Exception as exc:
+                print(f"[ros-nav2] Navigator destroy failed for '{robot_name}': {exc}")
+        self._nav2_navigators = {}
+
+    def _destroy_world_scan_publishers(self):
+        for robot_name, publisher in list(self._world_scan_publishers.items()):
+            try:
+                publisher.destroy()
+            except Exception as exc:
+                print(f"[ros-world-scan] Publisher destroy failed for '{robot_name}': {exc}")
+        self._world_scan_publishers = {}
+
+    def _destroy_ros_base_bridges(self):
+        for robot_name, controller in list(self._ros_base_command_controllers.items()):
+            try:
+                controller.destroy()
+            except Exception as exc:
+                print(f"[ros-base-bridge] Command controller destroy failed for '{robot_name}': {exc}")
+        self._ros_base_command_controllers = {}
+
+        for robot_name, bridge in list(self._ros_base_bridges.items()):
+            try:
+                bridge.destroy()
+            except Exception as exc:
+                print(f"[ros-base-bridge] Bridge destroy failed for '{robot_name}': {exc}")
+        self._ros_base_bridges = {}
+
+    def _step_world(self, render: bool = False):
+        self._step_world_scan_publishers()
+        self._step_nav2_navigators()
+        self._step_ros_base_bridges()
+        self.world.step(render=render)
+
     def _initialize_world_recorder(self):
         """
         Initialize WorldRecorder with appropriate mode based on configuration.
@@ -287,7 +562,7 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
         self.task.individual_randomize_from_mem()
         self.task.post_reset()
 
-        self.world.step(render=False)
+        self._step_world(render=False)
 
         # Reset controllers
         self._reset_controllers(self.controllers)
@@ -300,7 +575,7 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
         for _ in range(20):
             self.world.get_observations()
             self._init_static_objects(self.task)
-            self.world.step(render=False)
+            self._step_world(render=False)
 
         self._initialize_world_recorder()
 
@@ -319,7 +594,7 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
         self.task.individual_randomize()
         self.task.post_reset()
 
-        self.world.step(render=False)
+        self._step_world(render=False)
 
         # Reset controllers
         if self.task_cfg.get("fluid", None):
@@ -343,13 +618,13 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
         for _ in range(20):
             self.world.get_observations()
             self._init_static_objects(self.task)
-            self.world.step(render=False)
+            self._step_world(render=False)
 
         if self.task_cfg.get("fluid", None):
             self.task._set_fluid()
             # Fluid need additional warmup
             for _ in range(150):
-                self.world.step(render=False)
+                self._step_world(render=False)
 
         self._initialize_world_recorder()
 
@@ -460,7 +735,7 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
         for _ in range(10):
             obs = self.world.get_observations()
             # self._init_static_objects(self.task)
-            self.world.step(render=False)
+            self._step_world(render=False)
 
         while not (step_id >= max_episode_length or (not self.skills and not episode_success) or (not should_continue)):
             obs = self.world.get_observations()
@@ -495,7 +770,7 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
                 print("Task is successful")
                 end = True
                 for j_idx in range(1, 7):
-                    self.world.step(render=False)
+                    self._step_world(render=False)
                     obs = self.world.get_observations()
                     log_dual_obs(self.logger, obs, action_dict, self.controllers, step_idx=step_id + j_idx)
                     self.world_recorder.record()
@@ -507,7 +782,7 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
                 log_dual_obs(self.logger, obs, action_dict, self.controllers, step_idx=step_id)
                 self.world_recorder.record()
             self.task.apply_action(action_dict)
-            self.world.step(render=False)
+            self._step_world(render=False)
 
             step_id += 1
             if self.skills:
@@ -677,7 +952,7 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
         for _ in range(10):
             obs = self.world.get_observations()
             # self._init_static_objects(self.task)
-            self.world.step(render=True)
+            self._step_world(render=True)
 
         # while True:
         #     obs = self.world.get_observations()
@@ -717,7 +992,7 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
                 print("Task is successful")
                 end = True
                 for j_idx in range(1, 7):
-                    self.world.step(render=True)
+                    self._step_world(render=True)
                     obs = self.world.get_observations()
                     log_dual_obs(self.logger, obs, action_dict, self.controllers, step_idx=step_id + j_idx)
                     self._record_rgb_depth(step_id + j_idx)
@@ -730,7 +1005,7 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
                 log_dual_obs(self.logger, obs, action_dict, self.controllers, step_idx=step_id)
                 self._record_rgb_depth(step_id)
             self.task.apply_action(action_dict)
-            self.world.step(render=True)
+            self._step_world(render=True)
 
             step_id += 1
             if self.skills:

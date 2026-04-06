@@ -23,6 +23,7 @@ tasks:
       -
         name: "split_aloha"
         robot_config_file: workflows/simbox/core/configs/robots/split_aloha.yaml
+        path: "../../../InternDataAssets/assets/split_aloha_mid_360/robot.usd"
         euler: [0.0, 0.0, 90.0]
         ignore_substring: ["material", "table", "gso_box"]
 

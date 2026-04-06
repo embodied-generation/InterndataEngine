@@ -12,7 +12,7 @@ try:
 except ImportError:
     from isaacsim.core.api.materials import OmniPBR  # Isaac Sim 4.5.0
 
-from pxr import UsdGeom
+from pxr import UsdGeom, UsdPhysics
 
 
 @register_object
@@ -37,6 +37,30 @@ class PlaneObject(XFormPrim):
         plane_geom.CreateWidthAttr().Set(cfg["size"][0])
         plane_geom.CreateLengthAttr().Set(cfg["size"][1])
         super().__init__(prim_path=prim_path, name=cfg["name"], *args, **kwargs)
+
+        self._create_collision_volume(stage, cfg)
+
+    def _create_collision_volume(self, stage, cfg):
+        if not bool(cfg.get("collision_enabled", False)):
+            return
+
+        thickness = float(cfg.get("collision_thickness", 0.02))
+        if thickness <= 0.0:
+            raise ValueError("collision_thickness must be positive when collision_enabled is true")
+
+        collision_prim_path = f"{self.prim_path}/collision_volume"
+        collision_geom = UsdGeom.Cube.Define(stage, collision_prim_path)
+        collision_geom.CreateSizeAttr().Set(1.0)
+
+        collision_prim = collision_geom.GetPrim()
+        collision_xform = UsdGeom.Xformable(collision_prim)
+        collision_xform.AddScaleOp().Set((float(cfg["size"][0]), float(cfg["size"][1]), thickness))
+        collision_xform.AddTranslateOp().Set((0.0, 0.0, -0.5 * thickness))
+
+        UsdPhysics.CollisionAPI.Apply(collision_prim)
+
+        if not bool(cfg.get("collision_visible", False)):
+            UsdGeom.Imageable(collision_prim).MakeInvisible()
 
     def get_observations(self):
         raise NotImplementedError

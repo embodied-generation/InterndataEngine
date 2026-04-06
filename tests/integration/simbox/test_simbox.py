@@ -3,7 +3,10 @@ simbox tests that run in Isaac Sim environment using subprocess wrappers.
 Migrated from original test files to use the new IntegrationTestHarness framework.
 """
 
+import os
 import sys
+
+import pytest
 
 from tests.integration.base.test_harness import IntegrationTestHarness
 
@@ -95,6 +98,28 @@ def test_simbox_render():
     # harness.validate_output_generated(min_files=1)
 
     print("✓ simbox render test completed successfully")
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_ROS_BASE_BRIDGE_SMOKE_TEST") != "1",
+    reason="Set RUN_ROS_BASE_BRIDGE_SMOKE_TEST=1 to enable ROS base bridge smoke test",
+)
+def test_simbox_split_aloha_ros_bridge_smoke():
+    """Smoke test for SplitAloha ROS base bridge in Isaac Sim subprocess."""
+    harness = IntegrationTestHarness(
+        config_path="configs/simbox/de_render_template.yaml",
+        seed=42,
+    )
+
+    result = harness.run_data_engine_subprocess(
+        runner_script="tests/integration/simbox/runners/simbox_split_aloha_ros_bridge_smoke_runner.py",
+        interpreter="/isaac-sim/python.sh",
+        timeout=1800,
+    )
+
+    assert result.returncode == 0, f"simbox split_aloha ros bridge smoke test failed: {result.returncode}"
+
+    print("✓ simbox split_aloha ros bridge smoke test completed successfully")
 
 
 if __name__ == "__main__":

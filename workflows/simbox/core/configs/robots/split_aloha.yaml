@@ -71,3 +71,94 @@ left_joint_home_std: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 right_joint_home_std: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 left_gripper_home: [0.05]
 right_gripper_home: [0.05]
+
+base:
+  steering_joint_names:
+    - fl_steering_joint
+    - fr_steering_joint
+    - rl_steering_joint
+    - rr_steering_joint
+  wheel_joint_names:
+    - fl_wheel
+    - fr_wheel
+    - rl_wheel
+    - rr_wheel
+  wheel_base: 0.494
+  track_width: 0.364
+  wheel_radius: 0.09
+  steering_limit: 2.1
+  steering_rate_limit: 6.28
+  wheel_velocity_limit: 20.0
+  command_timeout: 0.25
+  ros:
+    cmd_vel_topic: /cmd_vel
+    command_topic: /ranger/sim/base_command
+    motion_mode_topic: /ranger/sim/motion_mode
+    command_type: ranger_driver
+    joint_state_topic: /joint_states
+    odom_topic: /odom
+    tf_enabled: true
+    base_frame: base_link
+    odom_frame: odom
+    scan_topic: /scan
+    world_scan:
+      enabled: true
+      scan_frame: base_link
+      publish_rate_hz: 10.0
+      num_beams: 360
+      angle_min: -3.141592653589793
+      angle_max: 3.141592653589793
+      range_min: 0.05
+      range_max: 12.0
+      both_sides: false
+      ignore_robot_self: true
+      sensor_offset: [0.0, 0.0, 0.25]
+      ignore_collision_prefixes: []
+    nav2:
+      enabled: true
+      action_name: /navigate_to_pose
+      goal_topic: /move_base_simple/goal
+      cancel_topic: /nav2/cancel
+      initialpose_topic: /initialpose
+      auto_goal_from_topic: true
+      auto_initial_pose: true
+      global_frame: map
+      robot_base_frame: base_link
+      send_goal_timeout_sec: 0.2
+      initial_pose_covariance:
+        - 0.25
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.25
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.0
+        - 0.06853891945200942

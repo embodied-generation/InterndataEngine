@@ -4,13 +4,14 @@ load_stage:
     type: env_loader
     args:
       workflow_type: SimBoxDualWorkFlow
-      cfg_path: workflows/simbox/core/configs/tasks/example/sort_the_rubbish.yaml  # Task config path
+      cfg_path: workflows/simbox/core/configs/tasks/long_horizon/split_aloha/collaborate_assemble_a_beef_sandwich_mix/collaborate_assemble_a_beef_sandwich_mix.yaml  # Task config path
       simulator:
         physics_dt: 1/30                   # Physics update rate
         rendering_dt: 1/30                 # Render update rate
         stage_units_in_meters: 1.0         # Stage unit scale
-        headless: True                     # Headless mode (no GUI); set false for visual debugging
+        headless: False                     # Headless mode (no GUI); set false for visual debugging
         anti_aliasing: 0                   # Anti-aliasing level
+        multi_gpu: False
   layout_random_generator:                 # Scene randomization
     type: env_randomizer
     args:

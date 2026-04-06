@@ -1,0 +1,32 @@
+personality = "pragmatic"
+model = "gpt-5.4"
+model_reasoning_effort = "high"
+[projects."/mnt/exdisk1/project"]
+trust_level = "untrusted"
+
+[projects."/home/maxdyf/桌面"]
+trust_level = "trusted"
+
+[projects."/mnt/exdisk1/project/LatentForcing"]
+trust_level = "trusted"
+
+[projects."/mnt/exdisk1/project/grasp_integration"]
+trust_level = "trusted"
+
+[projects."/mnt/exdisk1/project/VLABench"]
+trust_level = "trusted"
+
+[projects."/mnt/exdisk1/project/InternDataEngine"]
+trust_level = "trusted"
+
+[projects."/mnt/exdisk1/project/InternDataEngine/InternDataAssets/curobo"]
+trust_level = "trusted"
+
+[projects."/mnt/exdisk1/isaac-sim-4.1/kit/logs/Kit/Isaac-Sim/4.1"]
+trust_level = "trusted"
+
+[projects."/mnt/exdisk1/project/sep_aloha"]
+trust_level = "trusted"
+
+[notice.model_migrations]
+"gpt-5.3-codex" = "gpt-5.4"

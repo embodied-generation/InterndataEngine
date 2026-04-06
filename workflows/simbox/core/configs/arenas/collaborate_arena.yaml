@@ -18,6 +18,8 @@ fixtures:
     name: floor
     target_class: PlaneObject
     size: [5.0, 5.0]
+    collision_enabled: true
+    collision_thickness: 0.02
     translation: [0, 0, 0]
     texture:
       texture_lib: "floor_textures"

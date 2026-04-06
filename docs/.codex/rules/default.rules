@@ -1,0 +1,8 @@
+prefix_rule(pattern=["conda", "env", "list"], decision="allow")
+prefix_rule(pattern=["sort"], decision="allow")
+prefix_rule(pattern=["conda", "run", "-n", "robosuite", "bash", "-lc", "compgen -c | rg \"^urdf2mjcf$|^urdf_to_mjcf$|^convert_urdf\""], decision="allow")
+prefix_rule(pattern=["conda", "run", "-n", "robosuite", "python", "-m", "pip", "show"], decision="allow")
+prefix_rule(pattern=["conda", "run", "-n", "robosuite", "python", "-c"], decision="allow")
+prefix_rule(pattern=["conda", "run", "-n", "robosuite", "urdf2mjcf", "--help"], decision="allow")
+prefix_rule(pattern=["mkdir", "-p", "client/assets/robots/franka_panda/mjcf"], decision="allow")
+prefix_rule(pattern=["/bin/bash", "-lc", "find third_party/curobo/src/curobo/content/assets/robot -maxdepth 2 -type f -name '*.urdf' | sort | while read -r urdf; do stem=$(basename \"${urdf%.urdf}\"); out_dir=\"client/assets/robots/${stem}/mjcf\"; out_file=\"${out_dir}/${stem}.xml\"; mkdir -p \"$out_dir\"; echo \"==> ${stem}\"; if conda run -n robosuite urdf2mjcf \"$urdf\" --output \"$out_file\" --copy-meshes; then echo \"OK ${stem}\"; else echo \"FAIL ${stem}\"; fi; done"], decision="allow")
