@@ -6,11 +6,13 @@ fixtures:
     target_class: GeometryObject
     translation: [0.0, 0.0, 0.375]
     scale: [0.000525, 0.001053, 0.001056]
-  # -
-  #   name: floor
-  #   target_class: PlaneObject
-  #   size: [5.0, 5.0]
-  #   translation: [0, 0, 0]
+  -
+    name: floor
+    target_class: PlaneObject
+    size: [5.0, 5.0]
+    collision_enabled: true
+    collision_thickness: 0.02
+    translation: [0, 0, 0]
   # -
   #   name: background0
   #   target_class: PlaneObject

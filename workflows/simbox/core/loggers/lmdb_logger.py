@@ -1,17 +1,62 @@
 # pylint: skip-file
 import json
+import importlib
 import os
 import pickle
 from pathlib import Path
 
-import cv2
-import imageio
 import lmdb
 import numpy as np
 from core.loggers import BaseLogger
 from tqdm import tqdm
 
 DEFAULT_RGB_SCALE_FACTOR = 256000.0
+
+
+def _import_cv2():
+    return importlib.import_module("cv2")
+
+
+def _normalize_rgb_frame(frame):
+    image = np.asarray(frame)
+    if image.ndim != 3:
+        raise ValueError(f"Expected RGB frame with 3 dims, got shape={image.shape}")
+    if image.shape[2] == 4:
+        image = image[:, :, :3]
+    if image.shape[2] != 3:
+        raise ValueError(f"Expected RGB frame with 3 channels, got shape={image.shape}")
+    if image.dtype != np.uint8:
+        image = np.clip(image, 0, 255).astype(np.uint8)
+    return image
+
+
+def _save_rgb_video(cv2, output_path, frames, fps=15):
+    if not frames:
+        return
+
+    first_frame = _normalize_rgb_frame(frames[0])
+    height, width = first_frame.shape[:2]
+    writer = cv2.VideoWriter(
+        str(output_path),
+        cv2.VideoWriter_fourcc(*"mp4v"),
+        fps,
+        (width, height),
+    )
+    if not writer.isOpened():
+        raise RuntimeError(f"Failed to open video writer for {output_path}")
+
+    try:
+        for frame in frames:
+            rgb_frame = _normalize_rgb_frame(frame)
+            if rgb_frame.shape[:2] != (height, width):
+                raise ValueError(
+                    f"Inconsistent video frame size for {output_path}: "
+                    f"expected {(height, width)}, got {rgb_frame.shape[:2]}"
+                )
+            writer.write(cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR))
+    finally:
+        writer.release()
+
 
 def float_array_to_uint16_png(float_array):
     array = np.nan_to_num(float_array, nan=0.0, posinf=0.0, neginf=0.0)
@@ -57,6 +102,7 @@ class LmdbLogger(BaseLogger):
         pass
 
     def save(self, this_save_dir, timestamp: str, save_img: bool = True):
+        cv2 = _import_cv2() if save_img else None
         for robot_idx, robot_name in enumerate(self.proprio_data_logger.keys()):
             save_dir = Path(this_save_dir)
             save_dir = save_dir / f"{robot_name}" / f"{self.task_dir}" / f"{self.collect_info}" / f"{timestamp}"
@@ -170,7 +216,7 @@ class LmdbLogger(BaseLogger):
                         )
                         meta_info["keys"][key].append(f"{key}/{step_id}".encode("utf-8"))
 
-                    imageio.mimsave(os.path.join(root_img_path, "demo.mp4"), value, fps=15)
+                    _save_rgb_video(cv2, root_img_path / "demo.mp4", value, fps=15)
 
                 for key, value in self.depth_image_logger.get(robot_name, {}).items():
                     root_img_path = save_dir / f"{key}"

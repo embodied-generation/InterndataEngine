@@ -31,7 +31,6 @@ sys.path.append("workflows/simbox")
 from geometry_msgs.msg import Twist  # pylint: disable=wrong-import-position
 from omni.isaac.core import World  # pylint: disable=wrong-import-position  # type: ignore[import-not-found]
 import omni.physx as physx  # pylint: disable=wrong-import-position  # type: ignore[import-not-found]
-from sensor_msgs.msg import LaserScan  # pylint: disable=wrong-import-position
 
 from nimbus.utils.utils import init_env  # pylint: disable=wrong-import-position
 from workflows import import_extensions  # pylint: disable=wrong-import-position
@@ -280,67 +279,6 @@ def _find_split_aloha(workflow):
     raise RuntimeError("SplitAloha robot not found in loaded scene")
 
 
-class _ScanRecorder:
-    def __init__(self, node, topic: str):
-        self.topic = str(topic)
-        self._records: list[dict] = []
-        self._sub = node.create_subscription(LaserScan, self.topic, self._on_scan, 10)
-
-    @property
-    def records(self):
-        return self._records
-
-    def _on_scan(self, msg: LaserScan):
-        stamp_sec = int(msg.header.stamp.sec)
-        stamp_nanosec = int(msg.header.stamp.nanosec)
-        ranges = [float(value) for value in msg.ranges]
-        self._records.append(
-            {
-                "stamp_sec": stamp_sec,
-                "stamp_nanosec": stamp_nanosec,
-                "frame_id": str(msg.header.frame_id),
-                "angle_min": float(msg.angle_min),
-                "angle_max": float(msg.angle_max),
-                "angle_increment": float(msg.angle_increment),
-                "range_min": float(msg.range_min),
-                "range_max": float(msg.range_max),
-                "ranges": ranges,
-            }
-        )
-
-
-def _save_scan_records(scan_records: list[dict], jsonl_path: Path, npz_path: Path):
-    with open(jsonl_path, "w", encoding="utf-8") as file:
-        for record in scan_records:
-            file.write(json.dumps(record))
-            file.write("\n")
-
-    if not scan_records:
-        np.savez_compressed(
-            npz_path,
-            stamp_sec=np.empty((0,), dtype=np.int64),
-            stamp_nanosec=np.empty((0,), dtype=np.int64),
-            ranges=np.empty((0, 0), dtype=np.float32),
-        )
-        return
-
-    beam_count = min(len(record.get("ranges", [])) for record in scan_records)
-    beam_count = max(beam_count, 0)
-
-    stamp_sec = np.asarray([int(record["stamp_sec"]) for record in scan_records], dtype=np.int64)
-    stamp_nanosec = np.asarray([int(record["stamp_nanosec"]) for record in scan_records], dtype=np.int64)
-
-    if beam_count == 0:
-        ranges = np.empty((len(scan_records), 0), dtype=np.float32)
-    else:
-        ranges = np.asarray(
-            [[float(value) for value in record["ranges"][:beam_count]] for record in scan_records],
-            dtype=np.float32,
-        )
-
-    np.savez_compressed(npz_path, stamp_sec=stamp_sec, stamp_nanosec=stamp_nanosec, ranges=ranges)
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -470,8 +408,6 @@ def main():
         camera = workflow.task.cameras["topdown_global_debug_camera"]
 
         command_pub = bridge.node.create_publisher(Twist, bridge.ros_cfg["cmd_vel_topic"], 10)
-        scan_topic = str(bridge.ros_cfg.get("scan_topic", "/scan"))
-        scan_recorder = _ScanRecorder(bridge.node, scan_topic)
 
         navigator = None
         if bool(args.use_nav2):
@@ -495,8 +431,6 @@ def main():
             path_plot_path = run_dir / Path(args.path_plot_path).name
         else:
             path_plot_path = run_dir / f"{out_path.stem}_path.png"
-        scan_jsonl_path = run_dir / f"{out_path.stem}_scan.jsonl"
-        scan_npz_path = run_dir / f"{out_path.stem}_scan.npz"
 
         # Warmup for stable rendering and ROS callback sync.
         for _ in range(max(int(args.warmup_steps), 0)):
@@ -558,7 +492,6 @@ def main():
         nav2_result_status = None
 
         if bool(args.use_nav2):
-            navigator.publish_initial_pose_from_robot()
             navigator.send_goal(
                 x=float(target_world_xy[0]),
                 y=float(target_world_xy[1]),
@@ -656,7 +589,6 @@ def main():
         world_path_plot_writer = _write_path_plot(
             str(world_path_plot_path), trajectory_xy, (float(target_world_xy[0]), float(target_world_xy[1]))
         )
-        _save_scan_records(scan_recorder.records, scan_jsonl_path, scan_npz_path)
 
         report = {
             "task_cfg_source": args.task_cfg_source,
@@ -708,12 +640,6 @@ def main():
                 "trajectory_point_count": len(trajectory_xy),
             },
             "detour_goal_selection": detour_goal_meta,
-            "scan_capture": {
-                "topic": scan_topic,
-                "message_count": len(scan_recorder.records),
-                "jsonl_path": str(scan_jsonl_path),
-                "npz_path": str(scan_npz_path),
-            },
             "run_dir": str(run_dir),
             "path_plot_path": str(path_plot_path),
             "path_plot_writer": path_plot_writer,

@@ -56,8 +56,26 @@ name_with_split="${config_name}_plan_with_render${random_seed:+_seed_${random_se
 echo "Running with config: $cfg_path"
 echo "Output name: $name_with_split"
 
+ISAAC_PYTHON="${ISAAC_PYTHON:-}"
+if [ -z "$ISAAC_PYTHON" ]; then
+    for candidate_root in "${ISAAC_SIM_ROOT:-}" "/isaac-sim" "/workspace/isaac-sim"; do
+        if [ -n "$candidate_root" ] && [ -x "$candidate_root/python.sh" ]; then
+            ISAAC_PYTHON="$candidate_root/python.sh"
+            break
+        fi
+    done
+fi
+
+if [ -z "$ISAAC_PYTHON" ]; then
+    echo "Error: Isaac python launcher not found."
+    echo "Set ISAAC_SIM_ROOT (e.g. /workspace/isaac-sim) or ISAAC_PYTHON explicitly."
+    exit 1
+fi
+
+echo "Using Isaac launcher: $ISAAC_PYTHON"
+
 set -x
-/isaac-sim/python.sh launcher.py --config configs/simbox/de_plan_with_render_template.yaml \
+"$ISAAC_PYTHON" launcher.py --config configs/simbox/de_plan_with_render_template.yaml \
 --name="$name_with_split" \
 --load_stage.scene_loader.args.cfg_path="$cfg_path" \
 --load_stage.layout_random_generator.args.random_num="$random_num" \

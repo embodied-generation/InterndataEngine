@@ -15,6 +15,8 @@ sys.path.append("./")
 sys.path.append("./data_engine")
 sys.path.append("./tests/integration")
 
+ISAAC_TEST_PYTHON = os.environ.get("ISAAC_SIM_PYTHON", sys.executable)
+
 
 def test_simbox_pipeline():
     """
@@ -26,7 +28,7 @@ def test_simbox_pipeline():
     # Run in subprocess using Isaac Sim Python interpreter
     result = harness.run_data_engine_subprocess(
         runner_script="tests/integration/simbox/runners/simbox_pipeline_runner.py",
-        interpreter="/isaac-sim/python.sh",
+        interpreter=ISAAC_TEST_PYTHON,
         timeout=1800,  # 30 minutes
     )
 
@@ -52,7 +54,7 @@ def test_simbox_plan():
     # Run in subprocess using Isaac Sim Python interpreter
     result = harness.run_data_engine_subprocess(
         runner_script="tests/integration/simbox/runners/simbox_plan_runner.py",
-        interpreter="/isaac-sim/python.sh",
+        interpreter=ISAAC_TEST_PYTHON,
         timeout=1800,  # 30 minutes
     )
 
@@ -79,7 +81,7 @@ def test_simbox_render():
     # Run in subprocess using Isaac Sim Python interpreter
     result = harness.run_data_engine_subprocess(
         runner_script="tests/integration/simbox/runners/simbox_render_runner.py",
-        interpreter="/isaac-sim/python.sh",
+        interpreter=ISAAC_TEST_PYTHON,
         timeout=1800,  # 30 minutes
         compare_output=True,
         reference_dir=reference_dir,
@@ -113,13 +115,35 @@ def test_simbox_split_aloha_ros_bridge_smoke():
 
     result = harness.run_data_engine_subprocess(
         runner_script="tests/integration/simbox/runners/simbox_split_aloha_ros_bridge_smoke_runner.py",
-        interpreter="/isaac-sim/python.sh",
+        interpreter=ISAAC_TEST_PYTHON,
         timeout=1800,
     )
 
     assert result.returncode == 0, f"simbox split_aloha ros bridge smoke test failed: {result.returncode}"
 
     print("✓ simbox split_aloha ros bridge smoke test completed successfully")
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_ROS_NAV2_SMOKE_TEST") != "1",
+    reason="Set RUN_ROS_NAV2_SMOKE_TEST=1 to enable ROS Nav2 detour smoke test",
+)
+def test_simbox_split_aloha_nav2_detour_smoke():
+    """Smoke test for SplitAloha ROS Nav2 detour flow in Isaac Sim subprocess."""
+    harness = IntegrationTestHarness(
+        config_path="configs/simbox/de_render_template.yaml",
+        seed=42,
+    )
+
+    result = harness.run_data_engine_subprocess(
+        runner_script="tests/integration/simbox/runners/simbox_split_aloha_nav2_detour_runner.py",
+        interpreter=ISAAC_TEST_PYTHON,
+        timeout=1800,
+    )
+
+    assert result.returncode == 0, f"simbox split_aloha nav2 detour smoke test failed: {result.returncode}"
+
+    print("✓ simbox split_aloha nav2 detour smoke test completed successfully")
 
 
 if __name__ == "__main__":

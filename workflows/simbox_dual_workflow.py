@@ -32,6 +32,24 @@ from .simbox.core.utils.collision_utils import filter_collisions
 from .simbox.core.utils.utils import set_random_seed
 
 
+class _PassiveSkillController:
+    """Placeholder controller for skills that do not emit manipulator actions."""
+
+    def __init__(self, *, robot_name: str, controller_name: str):
+        self.name = robot_name
+        self.robot_file = f"{controller_name}_passive_skill_controller"
+        self._gripper_state = 1.0
+
+    def reset(self):
+        return None
+
+    def forward(self, _command):
+        return {
+            "joint_positions": np.array([], dtype=np.float32),
+            "joint_indices": np.array([], dtype=np.int64),
+        }
+
+
 # pylint: disable=unused-argument
 @NimbusWorkFlow.register("SimBoxDualWorkFlow")
 class SimBoxDualWorkFlow(NimbusWorkFlow):
@@ -47,12 +65,99 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
         self.random_seed = random_seed
         self._ros_base_command_controllers = {}
         self._ros_base_bridges = {}
-        self._world_scan_publishers = {}
         self._nav2_navigators = {}
+        self._navigation_session_managers = {}
+        self._nav2_clock_publisher = None
         self._ros_bridge_unavailable_reported = False
-        self._world_scan_unavailable_reported = False
-        self._nav2_unavailable_reported = False
         super().__init__(world, task_cfg_path)
+
+    @staticmethod
+    def _task_uses_nav2_skill(task_cfg: dict, robot_name: str) -> bool:
+        skills = task_cfg.get("skills", [])
+        if not isinstance(skills, list):
+            return False
+        for cfg_skill_dict in skills:
+            if not isinstance(cfg_skill_dict, dict):
+                continue
+            robot_skill_list = cfg_skill_dict.get(robot_name, [])
+            if not isinstance(robot_skill_list, list):
+                continue
+            for lr_skill_dict in robot_skill_list:
+                if not isinstance(lr_skill_dict, dict):
+                    continue
+                for lr_skill_list in lr_skill_dict.values():
+                    if not isinstance(lr_skill_list, list):
+                        continue
+                    for skill_cfg in lr_skill_list:
+                        if isinstance(skill_cfg, dict) and str(skill_cfg.get("name", "")).strip() == "nav2__navigate":
+                            return True
+        return False
+
+    def _normalize_skill_managed_mobile_configs(self, task_cfg: dict):
+        try:
+            from nav2.runtime import configure_base_cfg_for_nav2_skill
+        except Exception:
+            return
+
+        robots = task_cfg.get("robots", [])
+        if not isinstance(robots, list):
+            return
+
+        for robot in robots:
+            if not isinstance(robot, dict):
+                continue
+            robot_name = str(robot.get("name", "")).strip()
+            if not robot_name or not self._task_uses_nav2_skill(task_cfg, robot_name):
+                continue
+            base_cfg = robot.get("base", {})
+            if not isinstance(base_cfg, dict):
+                continue
+            robot["base"] = configure_base_cfg_for_nav2_skill(base_cfg)
+
+    @staticmethod
+    def _skill_requires_controller(skill_cfg: dict) -> bool:
+        if not isinstance(skill_cfg, dict):
+            return True
+        return str(skill_cfg.get("name", "")).strip() != "nav2__navigate"
+
+    def _skill_controller_names(self, task_cfg: dict, robot_name: str) -> set[str]:
+        controller_names = set()
+        skills = task_cfg.get("skills", [])
+        if not isinstance(skills, list):
+            return controller_names
+        for cfg_skill_dict in skills:
+            if not isinstance(cfg_skill_dict, dict):
+                continue
+            robot_skill_list = cfg_skill_dict.get(robot_name, [])
+            if not isinstance(robot_skill_list, list):
+                continue
+            for lr_skill_dict in robot_skill_list:
+                if not isinstance(lr_skill_dict, dict):
+                    continue
+                for lr_name in lr_skill_dict.keys():
+                    controller_names.add(str(lr_name))
+        return controller_names
+
+    def _required_controller_names(self, task_cfg: dict, robot_name: str) -> set[str]:
+        required = set()
+        skills = task_cfg.get("skills", [])
+        if not isinstance(skills, list):
+            return required
+        for cfg_skill_dict in skills:
+            if not isinstance(cfg_skill_dict, dict):
+                continue
+            robot_skill_list = cfg_skill_dict.get(robot_name, [])
+            if not isinstance(robot_skill_list, list):
+                continue
+            for lr_skill_dict in robot_skill_list:
+                if not isinstance(lr_skill_dict, dict):
+                    continue
+                for lr_name, lr_skill_list in lr_skill_dict.items():
+                    if not isinstance(lr_skill_list, list):
+                        continue
+                    if any(self._skill_requires_controller(skill_cfg) for skill_cfg in lr_skill_list):
+                        required.add(str(lr_name))
+        return required
 
     def parse_task_cfgs(self, task_cfg_path: str) -> list:
         task_cfgs = TaskConfigParser(task_cfg_path).parse_tasks()
@@ -74,13 +179,55 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
                 # Merge: robot_base_cfg as base, task_cfg['robots'][i] overrides
                 merged_cfg = deepcopy(robot_base_cfg)
                 merged_cfg.update(robot)
+                base_cfg = merged_cfg.get("base")
+                if isinstance(base_cfg, dict):
+                    self._merge_base_configs(base_cfg)
                 robot.clear()
                 robot.update(merged_cfg)
 
+        self._normalize_skill_managed_mobile_configs(task_cfg)
+
+    def _merge_base_configs(self, base_cfg: dict):
+        """Merge mobile base/nav config references into base_cfg in-place."""
+        override_cfg = deepcopy(base_cfg)
+        merged_base_cfg = {}
+        base_config_file = override_cfg.get("base_config_file")
+        nav_config_file = override_cfg.get("nav_config_file")
+
+        if base_config_file:
+            with open(base_config_file, "r", encoding="utf-8") as f:
+                loaded_base_cfg = yaml.load(f, Loader=Loader)
+            if isinstance(loaded_base_cfg, dict):
+                merged_base_cfg = deepcopy(loaded_base_cfg)
+
+        if nav_config_file:
+            with open(nav_config_file, "r", encoding="utf-8") as f:
+                loaded_nav_cfg = yaml.load(f, Loader=Loader)
+            if isinstance(loaded_nav_cfg, dict):
+                self._deep_update_dict(merged_base_cfg, loaded_nav_cfg)
+
+        self._deep_update_dict(merged_base_cfg, override_cfg)
+        base_cfg.clear()
+        base_cfg.update(merged_base_cfg)
+
+    def _deep_update_dict(self, base: dict, override: dict):
+        for key, value in override.items():
+            if isinstance(value, dict) and isinstance(base.get(key), dict):
+                self._deep_update_dict(base[key], value)
+            else:
+                base[key] = value
+
     def reset(self, need_preload: bool = True):
-        self._destroy_world_scan_publishers()
-        self._destroy_nav2_navigators()
+        self._prepare_navigation_session_managers_for_reset()
+        self._destroy_navigation_session_managers()
+        self._destroy_nav2_clock_publisher()
         self._destroy_ros_base_bridges()
+
+        # A previous task can remain registered if scene setup fails during world.reset().
+        # Clear the world before constructing the next task so retries do not trip the
+        # duplicate-name guard in omni.isaac.core.world.World.add_task().
+        if self.world.get_current_tasks() or self.world.is_tasks_scene_built():
+            self.world.clear()
 
         # source code noted this as debug, so it could be removed later
         from omni.isaac.core.utils.viewports import set_camera_view
@@ -168,8 +315,7 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
         self.controllers = self._initialize_controllers(self.task, self.task_cfg, self.world)
         self.skills = self._initialize_skills(self.task, self.task_cfg, self.controllers, self.world)
         self._initialize_ros_base_bridges()
-        self._initialize_world_scan_publishers()
-        self._initialize_nav2_navigators()
+        self._initialize_navigation_session_managers()
 
         for _ in range(50):
             self._init_static_objects(self.task)
@@ -222,6 +368,7 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
                                 task,
                                 skill_cfg,
                                 world=world,
+                                workflow=self,
                                 draw=draw,
                             )
                             for skill_cfg in lr_skill_list
@@ -236,11 +383,27 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
         """Initialize controllers for each robot."""
         controllers = {}
         for robot in task_cfg["robots"]:
-            controllers[robot["name"]] = {}
-            for robot_file in robot["robot_file"]:
+            robot_name = robot["name"]
+            controllers[robot_name] = {}
+            required_controller_names = self._required_controller_names(task_cfg, robot_name)
+            declared_controller_names = self._skill_controller_names(task_cfg, robot_name)
+
+            robot_files = robot.get("robot_file", [])
+            if isinstance(robot_files, str):
+                robot_files = [robot_files]
+            robot_files_by_name = {}
+            for robot_file in robot_files:
                 controller_name = "left" if "left" in robot_file else "right"
-                controllers[robot["name"]][controller_name] = get_controller_cls(robot["target_class"])(
-                    name=robot["name"],
+                robot_files_by_name[controller_name] = robot_file
+
+            for controller_name in required_controller_names:
+                robot_file = robot_files_by_name.get(controller_name)
+                if robot_file is None:
+                    raise KeyError(
+                        f"Robot '{robot_name}' is missing robot_file for controller '{controller_name}'"
+                    )
+                controllers[robot_name][controller_name] = get_controller_cls(robot["target_class"])(
+                    name=robot_name,
                     robot_file=robot_file,
                     constrain_grasp_approach=robot.get("constrain_grasp_approach", False),
                     collision_activation_distance=robot.get("collision_activation_distance", 0.03),
@@ -249,7 +412,16 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
                     ignore_substring=robot.get("ignore_substring", ["material", "Plane", "conveyor", "scene", "table"]),
                     use_batch=robot.get("use_batch", False),
                 )
-                controllers[robot["name"]][controller_name].reset()
+                controllers[robot_name][controller_name].reset()
+
+            passive_controller_names = (
+                declared_controller_names | set(robot_files_by_name.keys())
+            ) - required_controller_names
+            for controller_name in passive_controller_names:
+                controllers[robot_name][controller_name] = _PassiveSkillController(
+                    robot_name=robot_name,
+                    controller_name=controller_name,
+                )
         return controllers
 
     def _initialize_ros_base_bridges(self):
@@ -257,7 +429,7 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
         self._ros_base_command_controllers = {}
         self._ros_base_bridges = {}
         try:
-            from .simbox.core.mobile import RangerMiniV3Controller, SplitAlohaIsaacBaseBridge
+            from .simbox.core.mobile.bridge import RangerMiniV3Bridge
         except Exception as exc:
             if not self._ros_bridge_unavailable_reported:
                 print(f"[ros-base-bridge] ROS bridge unavailable, skip initialization: {exc}")
@@ -279,32 +451,23 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
                 continue
             if not bool(ros_cfg.get("enabled", True)):
                 continue
-            if ros_cfg.get("command_type") != "ranger_driver":
-                print(f"[ros-base-bridge] Skip '{robot_name}': command_type must be 'ranger_driver'")
-                continue
 
-            controller_node_name = f"{robot_name}_ranger_mini_v3_controller".replace("-", "_")
-            bridge_node_name = f"{robot_name}_isaac_base_bridge".replace("-", "_")
-            controller = None
+            bridge_node_name = f"{robot_name}_ranger_mini_v3_bridge".replace("-", "_")
             bridge = None
             try:
-                controller = RangerMiniV3Controller(base_cfg, node_name=controller_node_name)
-                bridge = SplitAlohaIsaacBaseBridge(robot, node_name=bridge_node_name)
+                bridge = RangerMiniV3Bridge(robot, node_name=bridge_node_name)
             except Exception as exc:
                 print(f"[ros-base-bridge] Failed to initialize bridge for '{robot_name}': {exc}")
-                if controller is not None:
-                    try:
-                        controller.destroy()
-                    except Exception:
-                        pass
                 if bridge is not None:
                     try:
                         bridge.destroy()
                     except Exception:
                         pass
                 continue
-            self._ros_base_command_controllers[robot_name] = controller
             self._ros_base_bridges[robot_name] = bridge
+            setattr(robot, "_simbox_ros_base_command_controller", None)
+            setattr(robot, "_simbox_ros_base_bridge", bridge)
+            print(f"[ros-base-bridge] '{robot_name}' using DIRECT /cmd_vel 4WIS bridge")
 
         if self._ros_base_bridges:
             robot_names = sorted(self._ros_base_bridges.keys())
@@ -313,6 +476,12 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
     def _step_ros_base_bridges(self):
         if not self._ros_base_bridges:
             return
+
+        get_physics_dt = getattr(self.world, "get_physics_dt", None)
+        if callable(get_physics_dt):
+            step_dt = float(get_physics_dt())
+        else:
+            step_dt = float(getattr(self.world, "physics_dt", 1.0 / 60.0))
 
         broken_robot_names = []
         for robot_name, controller in list(self._ros_base_command_controllers.items()):
@@ -324,7 +493,7 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
 
         for robot_name, bridge in list(self._ros_base_bridges.items()):
             try:
-                bridge.step()
+                bridge.step(step_dt=step_dt)
             except Exception as exc:
                 print(f"[ros-base-bridge] Bridge step failed for '{robot_name}': {exc}")
                 broken_robot_names.append(robot_name)
@@ -336,6 +505,9 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
                     controller.destroy()
                 except Exception as exc:
                     print(f"[ros-base-bridge] Command controller destroy failed for '{robot_name}': {exc}")
+                robot = self.task.robots.get(robot_name)
+                if robot is not None and hasattr(robot, "_simbox_ros_base_command_controller"):
+                    setattr(robot, "_simbox_ros_base_command_controller", None)
 
             bridge = self._ros_base_bridges.pop(robot_name, None)
             if bridge is None:
@@ -344,153 +516,134 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
                 bridge.destroy()
             except Exception as exc:
                 print(f"[ros-base-bridge] Bridge destroy failed for '{robot_name}': {exc}")
+            robot = self.task.robots.get(robot_name)
+            if robot is not None and hasattr(robot, "_simbox_ros_base_bridge"):
+                setattr(robot, "_simbox_ros_base_bridge", None)
 
-    def _initialize_nav2_navigators(self):
-        self._destroy_nav2_navigators()
-        self._nav2_navigators = {}
+    def _robot_nav2_enabled(self, robot) -> bool:
+        if not hasattr(robot, "get_base_interface"):
+            return False
         try:
-            from .simbox.core.mobile import Nav2Navigator
+            base_interface = robot.get_base_interface()
+        except Exception:
+            return False
+        base_cfg = base_interface.get("base_cfg", {}) if isinstance(base_interface, dict) else {}
+        ros_cfg = base_cfg.get("ros", {}) if isinstance(base_cfg, dict) else {}
+        nav2_cfg = ros_cfg.get("nav2", {}) if isinstance(ros_cfg, dict) else {}
+        return isinstance(nav2_cfg, dict) and bool(nav2_cfg.get("enabled", False))
+
+    def _initialize_navigation_session_managers(self):
+        try:
+            from nav2.isaac_ros_clock import SimClockPublisher
+            from nav2.runtime import PersistentNav2RuntimeManager
         except Exception as exc:
-            if not self._nav2_unavailable_reported:
-                print(f"[ros-nav2] Nav2 integration unavailable, skip initialization: {exc}")
-                self._nav2_unavailable_reported = True
+            print(f"[ros-nav2-runtime] Runtime manager unavailable, skip initialization: {exc}")
             return
 
+        live_robot_names = set()
         for robot_name, robot in self.task.robots.items():
-            if not hasattr(robot, "get_base_interface"):
+            if not self._robot_nav2_enabled(robot):
                 continue
+            robot = self.task.robots.get(robot_name)
+            if robot is None:
+                continue
+            live_robot_names.add(robot_name)
+            manager = self._navigation_session_managers.get(robot_name)
+            if manager is None:
+                manager = PersistentNav2RuntimeManager(
+                    world=self.world,
+                    task=self.task,
+                    robot=robot,
+                    output_root="output/ros_bridge/skills",
+                    scene_name=str(getattr(self.task, "name", "nav2_skill_scene")),
+                )
+                self._navigation_session_managers[robot_name] = manager
+            manager.bind(
+                world=self.world,
+                task=self.task,
+                robot=robot,
+                scene_name=str(getattr(self.task, "name", "nav2_skill_scene")),
+            )
+        if live_robot_names and self._nav2_clock_publisher is None:
+            self._nav2_clock_publisher = SimClockPublisher(
+                self.world,
+                simulation_app=getattr(self, "simulation_app", None),
+            )
 
+        stale_robot_names = [name for name in self._navigation_session_managers.keys() if name not in live_robot_names]
+        for robot_name in stale_robot_names:
+            manager = self._navigation_session_managers.pop(robot_name, None)
+            if manager is None:
+                continue
             try:
-                base_interface = robot.get_base_interface()
-            except Exception:
-                continue
-
-            base_cfg = base_interface.get("base_cfg", {}) if isinstance(base_interface, dict) else {}
-            ros_cfg = base_cfg.get("ros", {}) if isinstance(base_cfg, dict) else {}
-            nav2_cfg = ros_cfg.get("nav2", {}) if isinstance(ros_cfg, dict) else {}
-            if not isinstance(nav2_cfg, dict) or not bool(nav2_cfg.get("enabled", False)):
-                continue
-
-            navigator_node_name = f"{robot_name}_nav2_navigator".replace("-", "_")
-            navigator = None
-            try:
-                navigator = Nav2Navigator(robot=robot, base_cfg=base_cfg, node_name=navigator_node_name)
+                manager.shutdown()
             except Exception as exc:
-                print(f"[ros-nav2] Failed to initialize Nav2 navigator for '{robot_name}': {exc}")
-                if navigator is not None:
-                    try:
-                        navigator.destroy()
-                    except Exception:
-                        pass
-                continue
-            self._nav2_navigators[robot_name] = navigator
+                print(f"[ros-nav2-runtime] Runtime manager shutdown failed for '{robot_name}': {exc}")
 
-        if self._nav2_navigators:
-            robot_names = sorted(self._nav2_navigators.keys())
-            print(f"[ros-nav2] Initialized {len(robot_names)} navigator(s): {robot_names}")
+        if self._navigation_session_managers:
+            robot_names = sorted(self._navigation_session_managers.keys())
+            print(f"[ros-nav2-runtime] Initialized {len(robot_names)} session manager(s): {robot_names}")
 
-    def _initialize_world_scan_publishers(self):
-        self._destroy_world_scan_publishers()
-        self._world_scan_publishers = {}
-        try:
-            from .simbox.core.mobile.nav2.world_scan_publisher import IsaacWorldScanPublisher
-        except Exception as exc:
-            if not self._world_scan_unavailable_reported:
-                print(f"[ros-world-scan] World-scan integration unavailable, skip initialization: {exc}")
-                self._world_scan_unavailable_reported = True
-            return
-
-        for robot_name, robot in self.task.robots.items():
-            if not hasattr(robot, "get_base_interface"):
-                continue
-
+    def _prepare_navigation_session_managers_for_reset(self):
+        for robot_name, manager in list(self._navigation_session_managers.items()):
             try:
-                base_interface = robot.get_base_interface()
-            except Exception:
-                continue
-
-            base_cfg = base_interface.get("base_cfg", {}) if isinstance(base_interface, dict) else {}
-            ros_cfg = base_cfg.get("ros", {}) if isinstance(base_cfg, dict) else {}
-            scan_cfg = ros_cfg.get("world_scan", {}) if isinstance(ros_cfg, dict) else {}
-            if not isinstance(scan_cfg, dict) or not bool(scan_cfg.get("enabled", False)):
-                continue
-
-            scan_node_name = f"{robot_name}_world_scan_publisher".replace("-", "_")
-            publisher = None
-            try:
-                publisher = IsaacWorldScanPublisher(robot=robot, base_cfg=base_cfg, node_name=scan_node_name)
+                manager.prepare_for_reset()
             except Exception as exc:
-                print(f"[ros-world-scan] Failed to initialize world-scan publisher for '{robot_name}': {exc}")
-                if publisher is not None:
-                    try:
-                        publisher.destroy()
-                    except Exception:
-                        pass
-                continue
+                print(f"[ros-nav2-runtime] Runtime manager prepare_for_reset failed for '{robot_name}': {exc}")
 
-            self._world_scan_publishers[robot_name] = publisher
-
-        if self._world_scan_publishers:
-            robot_names = sorted(self._world_scan_publishers.keys())
-            print(f"[ros-world-scan] Initialized {len(robot_names)} publisher(s): {robot_names}")
-
-    def _step_world_scan_publishers(self):
-        if not self._world_scan_publishers:
+    def _step_navigation_session_managers(self):
+        if not self._navigation_session_managers:
             return
 
         broken_robot_names = []
-        for robot_name, publisher in list(self._world_scan_publishers.items()):
+        for robot_name, manager in list(self._navigation_session_managers.items()):
             try:
-                publisher.step()
+                manager.step()
             except Exception as exc:
-                print(f"[ros-world-scan] Publisher step failed for '{robot_name}': {exc}")
+                print(f"[ros-nav2-runtime] Runtime manager step failed for '{robot_name}': {exc}")
                 broken_robot_names.append(robot_name)
 
-        for robot_name in set(broken_robot_names):
-            publisher = self._world_scan_publishers.pop(robot_name, None)
-            if publisher is None:
+        for robot_name in broken_robot_names:
+            manager = self._navigation_session_managers.pop(robot_name, None)
+            if manager is None:
                 continue
             try:
-                publisher.destroy()
+                manager.shutdown()
             except Exception as exc:
-                print(f"[ros-world-scan] Publisher destroy failed for '{robot_name}': {exc}")
+                print(f"[ros-nav2-runtime] Runtime manager shutdown failed for '{robot_name}': {exc}")
 
-    def _step_nav2_navigators(self):
-        if not self._nav2_navigators:
+    def _destroy_navigation_session_managers(self):
+        for robot_name, manager in list(self._navigation_session_managers.items()):
+            try:
+                manager.shutdown()
+            except Exception as exc:
+                print(f"[ros-nav2-runtime] Runtime manager shutdown failed for '{robot_name}': {exc}")
+        self._navigation_session_managers = {}
+
+    def get_navigation_session_manager(self, robot_name: str):
+        return self._navigation_session_managers.get(robot_name)
+
+    def _publish_nav2_clock(self):
+        if self._nav2_clock_publisher is None:
             return
+        try:
+            self._nav2_clock_publisher.world = self.world
+            self._nav2_clock_publisher.publish()
+        except Exception as exc:
+            print(f"[ros-nav2-runtime] Clock publish failed: {exc}")
+            self._destroy_nav2_clock_publisher()
 
-        broken_robot_names = []
-        for robot_name, navigator in list(self._nav2_navigators.items()):
-            try:
-                navigator.step()
-            except Exception as exc:
-                print(f"[ros-nav2] Navigator step failed for '{robot_name}': {exc}")
-                broken_robot_names.append(robot_name)
-
-        for robot_name in set(broken_robot_names):
-            navigator = self._nav2_navigators.pop(robot_name, None)
-            if navigator is None:
-                continue
-            try:
-                navigator.destroy()
-            except Exception as exc:
-                print(f"[ros-nav2] Navigator destroy failed for '{robot_name}': {exc}")
+    def _destroy_nav2_clock_publisher(self):
+        if self._nav2_clock_publisher is None:
+            return
+        try:
+            self._nav2_clock_publisher.destroy()
+        except Exception as exc:
+            print(f"[ros-nav2-runtime] Clock publisher destroy failed: {exc}")
+        self._nav2_clock_publisher = None
 
     def _destroy_nav2_navigators(self):
-        for robot_name, navigator in list(self._nav2_navigators.items()):
-            try:
-                navigator.destroy()
-            except Exception as exc:
-                print(f"[ros-nav2] Navigator destroy failed for '{robot_name}': {exc}")
         self._nav2_navigators = {}
-
-    def _destroy_world_scan_publishers(self):
-        for robot_name, publisher in list(self._world_scan_publishers.items()):
-            try:
-                publisher.destroy()
-            except Exception as exc:
-                print(f"[ros-world-scan] Publisher destroy failed for '{robot_name}': {exc}")
-        self._world_scan_publishers = {}
 
     def _destroy_ros_base_bridges(self):
         for robot_name, controller in list(self._ros_base_command_controllers.items()):
@@ -498,6 +651,9 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
                 controller.destroy()
             except Exception as exc:
                 print(f"[ros-base-bridge] Command controller destroy failed for '{robot_name}': {exc}")
+            robot = self.task.robots.get(robot_name)
+            if robot is not None and hasattr(robot, "_simbox_ros_base_command_controller"):
+                setattr(robot, "_simbox_ros_base_command_controller", None)
         self._ros_base_command_controllers = {}
 
         for robot_name, bridge in list(self._ros_base_bridges.items()):
@@ -505,13 +661,30 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
                 bridge.destroy()
             except Exception as exc:
                 print(f"[ros-base-bridge] Bridge destroy failed for '{robot_name}': {exc}")
+            robot = self.task.robots.get(robot_name)
+            if robot is not None and hasattr(robot, "_simbox_ros_base_bridge"):
+                setattr(robot, "_simbox_ros_base_bridge", None)
         self._ros_base_bridges = {}
 
     def _step_world(self, render: bool = False):
-        self._step_world_scan_publishers()
-        self._step_nav2_navigators()
+        # Match the successful test runner more closely:
+        # 1. pump ROS/nav before physics
+        # 2. step physics
+        # 3. pump ROS/nav once more after physics so odom/cmd_vel callbacks are
+        #    processed against the updated simulation state.
+        self._publish_nav2_clock()
+        self._step_navigation_session_managers()
         self._step_ros_base_bridges()
         self.world.step(render=render)
+        self._publish_nav2_clock()
+        self._step_navigation_session_managers()
+
+    def __del__(self):
+        try:
+            self._destroy_navigation_session_managers()
+            self._destroy_nav2_clock_publisher()
+        except Exception:
+            pass
 
     def _initialize_world_recorder(self):
         """
@@ -715,6 +888,15 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
                     should_continue = not lr_skill_list[0].is_ready()
         return should_continue
 
+    def _dump_nav2_runtime_debug_snapshots(self, tag: str):
+        for robot_name, manager in getattr(self, "_navigation_session_managers", {}).items():
+            if manager is None:
+                continue
+            try:
+                manager._write_debug_snapshot(f"workflow_{tag}_snapshot.json", f"workflow_{tag}", f"workflow terminated while nav2 skill was still active for {robot_name}")
+            except Exception as exc:
+                print(f"[ros-nav2-runtime] Failed to dump debug snapshot for '{robot_name}': {exc}")
+
     def generate_seq(self) -> list:
         end = False
 
@@ -797,6 +979,10 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
                 # Prim poses mode: return recorded poses for compatibility
                 return self.world_recorder.prim_poses
         else:
+            if step_id >= max_episode_length:
+                self._dump_nav2_runtime_debug_snapshots("step_limit")
+            elif not should_continue:
+                self._dump_nav2_runtime_debug_snapshots("skill_stop")
             return []
 
     def recover_seq(self, seq_path):
@@ -1017,6 +1203,7 @@ class SimBoxDualWorkFlow(NimbusWorkFlow):
         if end:
             return length
         else:
+            self.length = step_id
             return 0
 
     def _dump_task_cfg(self, task_cfg):

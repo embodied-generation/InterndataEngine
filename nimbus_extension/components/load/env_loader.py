@@ -1,5 +1,7 @@
+import os
 import time
 from fractions import Fraction
+from pathlib import Path
 
 from nimbus.components.data.iterator import Iterator
 from nimbus.components.data.package import Package
@@ -9,6 +11,45 @@ from nimbus.daemon import ComponentStatus, StatusReporter
 from nimbus.daemon.decorators import status_monitor
 from nimbus.utils.flags import get_random_seed
 from workflows.base import create_workflow
+
+
+def _resolve_headless_experience() -> str:
+    candidate_paths = []
+    for env_key in ("ISAAC_SIM_ROOT", "ISAAC_SIM_PATH"):
+        value = os.environ.get(env_key, "").strip()
+        if value:
+            root = Path(value)
+            candidate_paths.extend(
+                [
+                    root / "apps/omni.isaac.sim.python.gym.headless.kit",
+                    root / "apps/omni.isaac.sim.headless.native.kit",
+                ]
+            )
+    for root in (Path("/isaac-sim"), Path("/workspace/isaac-sim")):
+        candidate_paths.extend(
+            [
+                root / "apps/omni.isaac.sim.python.gym.headless.kit",
+                root / "apps/omni.isaac.sim.headless.native.kit",
+            ]
+        )
+
+    for experience in candidate_paths:
+        if experience.is_file():
+            return str(experience)
+
+    return "/isaac-sim/apps/omni.isaac.sim.python.gym.headless.kit"
+
+
+def _resolve_experience(configured_path: str, *, headless: bool) -> str:
+    configured_path = str(configured_path or "").strip()
+    if configured_path:
+        candidate = Path(configured_path)
+        if not candidate.is_absolute():
+            candidate = Path.cwd() / candidate
+        return str(candidate.resolve())
+    if headless:
+        return _resolve_headless_experience()
+    return ""
 
 
 class EnvLoader(SceneLoader):
@@ -62,14 +103,32 @@ class EnvLoader(SceneLoader):
 
         from isaacsim import SimulationApp
 
-        self.simulation_app = SimulationApp(
-            {
-                "headless": simulator.get("headless", True),
-                "anti_aliasing": simulator.get("anti_aliasing", 3),
-                "multi_gpu": simulator.get("multi_gpu", True),
-                "renderer": simulator.get("renderer", "RayTracedLighting"),
-            }
-        )
+        launch_config = {
+            "headless": simulator.get("headless", True),
+            "anti_aliasing": simulator.get("anti_aliasing", 3),
+            "multi_gpu": simulator.get("multi_gpu", True),
+            "renderer": simulator.get("renderer", "RayTracedLighting"),
+        }
+        experience = _resolve_experience(simulator.get("experience", ""), headless=bool(launch_config["headless"]))
+        if launch_config["headless"]:
+            if "disable_viewport_updates" in simulator:
+                launch_config["disable_viewport_updates"] = bool(simulator.get("disable_viewport_updates"))
+            elif not simulator.get("experience", ""):
+                launch_config["disable_viewport_updates"] = True
+            self.simulation_app = SimulationApp(
+                launch_config,
+                experience=experience,
+            )
+        else:
+            if experience:
+                self.simulation_app = SimulationApp(launch_config, experience=experience)
+            else:
+                self.simulation_app = SimulationApp(launch_config)
+
+        if workflow_type == "SimBoxDualWorkFlow":
+            from nav2.isaac_ros_clock import ensure_isaac_ros2_bridge_ready
+
+            ensure_isaac_ros2_bridge_ready(simulation_app=self.simulation_app)
 
         self.logger.info(f"simulator params: physics dt={physics_dt}, rendering dt={rendering_dt}")
         from omni.isaac.core import World
@@ -91,6 +150,7 @@ class EnvLoader(SceneLoader):
             scene_info=scene_info,
             random_seed=get_random_seed(),
         )
+        self.workflow.simulation_app = self.simulation_app
 
         self.scene = None
         self.task_finish = False

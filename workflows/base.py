@@ -23,7 +23,7 @@ class NimbusWorkFlow(ABC):
 
     def init_task(self, index, need_preload: bool = True):
         assert index < len(self.task_cfgs), "Index out of range for task configurations."
-        self.task_cfg = self.task_cfgs[index]
+        self.task_cfg = deepcopy(self.task_cfgs[index])
         self.reset(need_preload)
 
     def __copy__(self):

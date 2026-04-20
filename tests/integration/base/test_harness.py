@@ -16,7 +16,7 @@ from .utils import set_test_seeds
 sys.path.append("./")
 sys.path.append("./data_engine")
 
-DEFAULT_ISAAC_SIM_PYTHON = os.environ.get("ISAAC_SIM_PYTHON", "/mnt/exdisk1/isaac-sim-4.1/python.sh")
+DEFAULT_ISAAC_SIM_PYTHON = os.environ.get("ISAAC_SIM_PYTHON", sys.executable)
 
 
 # Import data_engine modules only when needed to avoid import errors during framework testing

@@ -3,6 +3,7 @@
 from core.objects.base_object import OBJECT_DICT
 
 from .articulated_object import ArticulatedObject
+from .box_object import BoxObject
 from .conveyor_object import ConveyorObject
 from .geometry_object import GeometryObject
 from .plane_object import PlaneObject
@@ -13,6 +14,7 @@ from .xform_object import XFormObject
 # Explicitly declare the public interface
 __all__ = [
     "ArticulatedObject",
+    "BoxObject",
     "ConveyorObject",
     "GeometryObject",
     "PlaneObject",

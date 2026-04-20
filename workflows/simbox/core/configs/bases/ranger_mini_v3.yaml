@@ -1,0 +1,30 @@
+wheel_base: 0.494
+track_width: 0.364
+wheel_radius: 0.09
+steering_limit: 2.1
+steering_rate_limit: 2.4
+wheel_velocity_limit: 20.0
+command_timeout: 0.25
+wheel_static_friction: 0.65
+wheel_dynamic_friction: 0.45
+wheel_drive_stiffness: 0.0
+wheel_drive_damping: 60.0
+wheel_drive_max_force: 120.0
+steering_drive_stiffness: 300000.0
+steering_drive_damping: 25000.0
+steering_drive_max_force: 25000.0
+steering_command_sign: -1.0
+body_twist_deadband: 0.0001
+module_speed_deadband: 0.00001
+ros:
+  cmd_vel_topic: /cmd_vel
+  joint_state_topic: /joint_states
+  odom_topic: /odom
+  tf_enabled: true
+  base_frame: base_link
+  odom_frame: odom
+  virtual_odom:
+    enabled: false
+    publish_twist: true
+    use_world_z: true
+    default_z: 0.0

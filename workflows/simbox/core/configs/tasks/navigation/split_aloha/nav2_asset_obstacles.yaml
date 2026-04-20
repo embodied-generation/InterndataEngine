@@ -1,0 +1,230 @@
+tasks:
+- name: nav2_asset_obstacles_task
+  asset_root: workflows/simbox/assets
+  task: BananaBaseTask
+  task_id: 0
+  offset: null
+  render: true
+  arena_file: workflows/simbox/core/configs/arenas/nav2_floor_arena.yaml
+  env_map:
+    envmap_lib: envmap_lib
+    apply_randomization: true
+    intensity_range:
+    - 4000
+    - 7000
+    rotation_range:
+    - 0
+    - 180
+  robots:
+  - name: split_aloha
+    robot_config_file: workflows/simbox/core/configs/robots/split_aloha.yaml
+    euler:
+    - 0.0
+    - 0.0
+    - 90.0
+    left_joint_home:
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    right_joint_home:
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    left_gripper_home:
+    - 0.0
+    right_gripper_home:
+    - 0.0
+    ignore_substring:
+    - material
+    - table
+    - plate
+    - beef
+    - lettuce
+    - bread
+  objects:
+  - name: obstacle_microwave_left
+    path: art/microwave_gr/microwave_0001/instance.usd
+    target_class: GeometryObject
+    prim_path_child: root
+    translation:
+    - -1.7
+    - 1.85
+    - 0.174
+    euler:
+    - 0.0
+    - 0.0
+    - 0.0
+    scale:
+    - 0.012
+    - 0.012
+    - 0.012
+    apply_randomization: false
+  - name: obstacle_microwave_right
+    path: art/microwave_gr/microwave_0001/instance.usd
+    target_class: GeometryObject
+    prim_path_child: root
+    translation:
+    - 1.1
+    - 2.05
+    - 0.174
+    euler:
+    - 0.0
+    - 0.0
+    - 0.0
+    scale:
+    - 0.012
+    - 0.012
+    - 0.012
+    apply_randomization: false
+  - name: obstacle_trashcan_left_far
+    path: art/trashcan/trashcan_0001/instance.usd
+    target_class: GeometryObject
+    prim_path_child: root
+    translation:
+    - -2.25
+    - 3.35
+    - 0.282
+    euler:
+    - 0.0
+    - 0.0
+    - 0.0
+    scale:
+    - 0.018
+    - 0.018
+    - 0.018
+    apply_randomization: false
+  - name: obstacle_washingmachine_right_mid
+    path: art/washingmachine_right/washingmachine_0000/instance.usd
+    target_class: GeometryObject
+    prim_path_child: root
+    translation:
+    - 1.75
+    - 3.1
+    - 0.431
+    euler:
+    - 0.0
+    - 0.0
+    - 0.0
+    scale:
+    - 0.01
+    - 0.01
+    - 0.01
+    apply_randomization: false
+  - name: obstacle_trashcan_right_far
+    path: art/trashcan/trashcan_0001/instance.usd
+    target_class: GeometryObject
+    prim_path_child: root
+    translation:
+    - 2.25
+    - 4.2
+    - 0.282
+    euler:
+    - 0.0
+    - 0.0
+    - 0.0
+    scale:
+    - 0.018
+    - 0.018
+    - 0.018
+    apply_randomization: false
+  regions:
+  - object: split_aloha
+    target: floor
+    random_type: A_on_B_region_sampler
+    random_config:
+      pos_range:
+      - - 0.0
+        - 0.0
+        - 0.0
+      - - 0.0
+        - 0.0
+        - 0.0
+      yaw_rotation:
+      - 0.0
+      - 0.0
+  cameras:
+  - name: nav2_global
+    translation:
+    - 0.0
+    - 2.4
+    - 5.0
+    orientation:
+    - 1.0
+    - 0.0
+    - 0.0
+    - 0.0
+    camera_axes: usd
+    camera_file: workflows/simbox/core/configs/cameras/realsense_d455_v3.yaml
+    parent: ""
+    apply_randomization: false
+  - name: split_aloha_hand_left
+    translation:
+    - 0.0
+    - 0.08
+    - 0.05
+    orientation:
+    - 0.0
+    - 0.0
+    - 0.965
+    - 0.259
+    camera_axes: usd
+    camera_file: workflows/simbox/core/configs/cameras/astra.yaml
+    parent: split_aloha/split_aloha_mid_360_with_piper/split_aloha_mid_360_with_piper/fl/link6
+    apply_randomization: false
+  - name: split_aloha_hand_right
+    translation:
+    - 0.0
+    - 0.08
+    - 0.04
+    orientation:
+    - 0.0
+    - 0.0
+    - 0.972
+    - 0.233
+    camera_axes: usd
+    camera_file: workflows/simbox/core/configs/cameras/astra.yaml
+    parent: split_aloha/split_aloha_mid_360_with_piper/split_aloha_mid_360_with_piper/fr/link6
+    apply_randomization: false
+  - name: split_aloha_head
+    translation:
+    - 0.0
+    - -0.00818
+    - 0.1
+    orientation:
+    - 0.658
+    - 0.259
+    - -0.282
+    - -0.648
+    camera_axes: usd
+    camera_file: workflows/simbox/core/configs/cameras/realsense_d455_v3.yaml
+    parent: split_aloha/split_aloha_mid_360_with_piper/split_aloha_mid_360_with_piper/top_camera_link
+    apply_randomization: false
+  data:
+    task_dir: nav2_asset_obstacles
+    language_instruction: Navigate the mobile base through asset-based obstacles to
+      the goal pose.
+    detailed_language_instruction: Drive the SplitAloha base through a static obstacle
+      field built from existing repository USD assets and stop at the goal pose.
+    collect_info: nav2_asset_obstacles
+    version: v1.0
+    update: true
+    max_episode_length: 3200
+  skills:
+  - split_aloha:
+    - left:
+      - name: nav2__navigate
+        goal_x: -1.09915
+        goal_y: 4.09205
+        goal_yaw: 1.8328
+        xy_goal_tolerance: 0.1
+        yaw_goal_tolerance: 0.1
+        startup_timeout_sec: 60.0
+        runtime_timeout_sec: 240.0
+        output_root: output/ros_bridge/skills
+        scene_name: nav2_asset_obstacles

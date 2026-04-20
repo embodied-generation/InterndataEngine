@@ -30,6 +30,7 @@ tasks:
         ignore_substring: ["material", "table", "plate", "beef", "lettuce", "bread"]
       -
         name: "lift2"
+        robot_config_file: workflows/simbox/core/configs/robots/lift2.yaml
         euler: [0.0, 0.0, 270.0]
         left_joint_home: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         right_joint_home: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]

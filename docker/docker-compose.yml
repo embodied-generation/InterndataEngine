@@ -1,0 +1,64 @@
+name: isaac-nav2-stack
+
+services:
+  isaac:
+    build:
+      context: ..
+      dockerfile: docker/isaac/Dockerfile
+    image: local/isaac-sim-4.1.0-curobo-app:latest
+    container_name: isaac
+    network_mode: host
+    gpus: all
+    privileged: false
+    stdin_open: true
+    tty: true
+    shm_size: "8gb"
+    environment:
+      ACCEPT_EULA: "Y"
+      PRIVACY_CONSENT: "Y"
+      OMNI_KIT_ACCEPT_EULA: "YES"
+      OMNI_KIT_ALLOW_ROOT: "1"
+      ISAAC_SIM_PATH: /isaac-sim
+      CUROBO_PATH: /opt/curobo
+      ROS_DISTRO: humble
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      FASTDDS_BUILTIN_TRANSPORTS: UDPv4
+      LIVESTREAM: ${LIVESTREAM:-0}
+      INTERNDATA_AUTOSTART_LAUNCHER: "1"
+      INTERNDATA_LAUNCHER_CONFIG: configs/simbox/de_plan_with_render_template.yaml
+    volumes:
+      - ${ISAAC_CACHE_MAIN:-../.docker/isaac-sim/cache/main}:/root/.cache/ov:rw
+      - ${ISAAC_CACHE_COMPUTE:-../.docker/isaac-sim/cache/computecache}:/root/.nv/ComputeCache:rw
+      - ${ISAAC_LOGS:-../.docker/isaac-sim/logs}:/root/.nvidia-omniverse/logs:rw
+      - ${ISAAC_CONFIG:-../.docker/isaac-sim/config}:/root/.nvidia-omniverse/config:rw
+      - ${ISAAC_DATA:-../.docker/isaac-sim/data}:/root/.local/share/ov/data:rw
+      - ${ISAAC_PKGS:-../.docker/isaac-sim/pkg}:/root/.local/share/ov/pkg:rw
+      - ..:/workspace:rw
+    working_dir: /workspace
+    entrypoint: ["/entrypoint.sh"]
+
+  nav2:
+    build:
+      context: ..
+      dockerfile: nav2/Dockerfile
+    image: local/ros2-humble-nav2:latest
+    container_name: nav2
+    network_mode: host
+    stdin_open: true
+    tty: true
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+      FASTDDS_BUILTIN_TRANSPORTS: UDPv4
+      TURTLEBOT3_MODEL: waffle
+      INTERNDATA_AUTOSTART_ROS_STACK: "1"
+      INTERNDATA_NAV2_ROBOT_CONFIG: workflows/simbox/core/configs/robots/split_aloha.yaml
+      INTERNDATA_NAV2_ROBOT_NAME: split_aloha
+      INTERNDATA_BASE_CONFIG: workflows/simbox/core/configs/bases/ranger_mini_v3.yaml
+      INTERNDATA_NAV2_STACK_CONFIG_DIR: output/nav2_runtime/bootstrap
+      INTERNDATA_NAV2_BOOTSTRAP_MAP_DIR: output/nav2_runtime/bootstrap_map
+    volumes:
+      - ..:/workspace/InterndataEngine:rw
+    working_dir: /workspace/InterndataEngine
+    entrypoint: ["/entrypoint.sh"]

@@ -1,22 +1,80 @@
 import functools
+import ctypes
 import os
 import re
 import sys
 import time
-from typing import Tuple, Type, Union
+from pathlib import Path
+from typing import TYPE_CHECKING, Tuple, Type, Union
 
-from nimbus.components.data.observation import Observations
-from nimbus.components.data.scene import Scene
-from nimbus.components.data.sequence import Sequence
+if TYPE_CHECKING:
+    from nimbus.components.data.observation import Observations
+    from nimbus.components.data.scene import Scene
+    from nimbus.components.data.sequence import Sequence
 
 
 def init_env():
     sys.path.append("./")
     sys.path.append("./data_engine")
     sys.path.append("workflows/simbox")
+    if _should_preload_isaac_opencv_runtime():
+        _preload_isaac_opencv_runtime()
+
+
+def _should_preload_isaac_opencv_runtime() -> bool:
+    flag = os.environ.get("NIMBUS_PRELOAD_ISAAC_OPENCV_RUNTIME", "").strip().lower()
+    if flag in {"1", "true", "yes", "on"}:
+        return True
+    if flag in {"0", "false", "no", "off"}:
+        return False
+    return False
+
+
+def _preload_isaac_opencv_runtime():
+    if os.environ.get("NIMBUS_OPENCV_RUNTIME_PRELOADED") == "1":
+        return
+
+    candidate_roots = []
+    isaac_root = os.environ.get("ISAAC_SIM_ROOT", "").strip()
+    if isaac_root:
+        candidate_roots.append(Path(isaac_root))
+    candidate_roots.extend([Path("/workspace/isaac-sim"), Path("/isaac-sim")])
+
+    lib_dir = None
+    for root in candidate_roots:
+        candidate = root / "kit/python/lib/python3.10/site-packages/opencv_python.libs"
+        if candidate.is_dir():
+            lib_dir = candidate
+            break
+    if lib_dir is None:
+        return
+
+    pending = {path.name: path for path in lib_dir.glob("*.so*")}
+    if not pending:
+        return
+
+    while pending:
+        progressed = False
+        for name, path in list(pending.items()):
+            try:
+                ctypes.CDLL(str(path), mode=ctypes.RTLD_GLOBAL)
+                pending.pop(name)
+                progressed = True
+            except OSError:
+                continue
+        if not progressed:
+            unresolved = ", ".join(sorted(pending)[:5])
+            print(f"[init_env] OpenCV runtime preload incomplete: {unresolved}")
+            return
+
+    os.environ["NIMBUS_OPENCV_RUNTIME_PRELOADED"] = "1"
 
 
 def unpack_iter_data(data: tuple):
+    from nimbus.components.data.observation import Observations
+    from nimbus.components.data.scene import Scene
+    from nimbus.components.data.sequence import Sequence
+
     assert len(data) <= 3, "not support yet"
     scene = None
     seq = None

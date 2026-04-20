@@ -1,0 +1,58 @@
+name: nav2_floor_arena_extended_front
+fixtures:
+  -
+    name: floor
+    target_class: PlaneObject
+    size: [12.0, 15.0]
+    collision_enabled: true
+    collision_thickness: 0.02
+    translation: [0.0, 0.0, 0.0]
+    texture:
+      texture_lib: "floor_textures"
+      apply_randomization: True
+      texture_id: 1
+      texture_scale: [2.0, 2.0]
+  -
+    name: boundary_left
+    target_class: PlaneObject
+    size: [3.0, 15.0]
+    translation: [-6.0, 0.0, 1.5]
+    euler: [0.0, 90.0, 0.0]
+    texture:
+      texture_lib: "background_textures"
+      apply_randomization: True
+      texture_id: 1
+      texture_scale: [2.0, 2.0]
+  -
+    name: boundary_right
+    target_class: PlaneObject
+    size: [3.0, 15.0]
+    translation: [6.0, 0.0, 1.5]
+    euler: [0.0, 90.0, 0.0]
+    texture:
+      texture_lib: "background_textures"
+      apply_randomization: True
+      texture_id: 1
+      texture_scale: [2.0, 2.0]
+  -
+    name: boundary_back
+    target_class: PlaneObject
+    size: [12.0, 3.0]
+    translation: [0.0, -7.5, 1.5]
+    euler: [90.0, 0.0, 0.0]
+    texture:
+      texture_lib: "background_textures"
+      apply_randomization: True
+      texture_id: 1
+      texture_scale: [2.0, 2.0]
+  -
+    name: boundary_front
+    target_class: PlaneObject
+    size: [12.0, 3.0]
+    translation: [0.0, 7.5, 1.5]
+    euler: [90.0, 0.0, 0.0]
+    texture:
+      texture_lib: "background_textures"
+      apply_randomization: True
+      texture_id: 1
+      texture_scale: [2.0, 2.0]

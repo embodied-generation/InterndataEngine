@@ -47,8 +47,16 @@ class BaseVehicleController(ABC):
             rclpy.shutdown()
 
     def step(self):
-        # A tiny timeout avoids starving DDS callback processing in tight simulation loops.
-        rclpy.spin_once(self.node, timeout_sec=0.001)
+        # Drain a small batch of callbacks each sim tick so external ROS publishers
+        # do not get starved by Isaac's tight stepping loop.
+        self._spin_available_callbacks()
+
+    def _spin_available_callbacks(self, max_callbacks: int = 8):
+        callback_count = 0
+        while callback_count < max(int(max_callbacks), 1):
+            timeout_sec = 0.001 if callback_count == 0 else 0.0
+            rclpy.spin_once(self.node, timeout_sec=timeout_sec)
+            callback_count += 1
 
     @abstractmethod
     def _setup_publishers(self):

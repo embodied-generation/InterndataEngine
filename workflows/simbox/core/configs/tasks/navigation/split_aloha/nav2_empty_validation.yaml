@@ -1,0 +1,61 @@
+tasks:
+- name: nav2_empty_validation_task
+  asset_root: workflows/simbox/assets
+  task: BananaBaseTask
+  task_id: 0
+  offset: null
+  render: true
+  arena_file: workflows/simbox/core/configs/arenas/nav2_floor_arena.yaml
+  env_map:
+    envmap_lib: envmap_lib
+    apply_randomization: false
+    intensity_range: [5000, 5000]
+    rotation_range: [0, 0]
+  robots:
+  - name: split_aloha
+    robot_config_file: workflows/simbox/core/configs/robots/split_aloha.yaml
+    euler: [0.0, 0.0, 90.0]
+    left_joint_home: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    right_joint_home: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    left_gripper_home: [0.0]
+    right_gripper_home: [0.0]
+    ignore_substring: [material, table, plate, beef, lettuce, bread]
+  objects: []
+  regions:
+  - object: split_aloha
+    target: floor
+    random_type: A_on_B_region_sampler
+    random_config:
+      pos_range:
+      - [0.0, 0.0, 0.0]
+      - [0.0, 0.0, 0.0]
+      yaw_rotation: [0.0, 0.0]
+  cameras:
+  - name: split_aloha_head
+    translation: [0.0, -0.00818, 0.1]
+    orientation: [0.658, 0.259, -0.282, -0.648]
+    camera_axes: usd
+    camera_file: workflows/simbox/core/configs/cameras/realsense_d455_v3.yaml
+    parent: split_aloha/split_aloha_mid_360_with_piper/split_aloha_mid_360_with_piper/top_camera_link
+    apply_randomization: false
+  data:
+    task_dir: nav2_empty_validation
+    language_instruction: Navigate the mobile base to the goal pose in an empty floor arena.
+    detailed_language_instruction: Drive the SplitAloha base to the target pose in an empty arena without any manipulation actions.
+    collect_info: nav2_empty_validation
+    version: v1.0
+    update: true
+    max_episode_length: 2200
+  skills:
+  - split_aloha:
+    - left:
+      - name: nav2__navigate
+        goal_x: -0.20
+        goal_y: 4.80
+        goal_yaw: 1.5707963267948966
+        xy_goal_tolerance: 0.1
+        yaw_goal_tolerance: 0.1
+        startup_timeout_sec: 60.0
+        runtime_timeout_sec: 180.0
+        output_root: output/ros_bridge/skills
+        scene_name: nav2_empty_validation

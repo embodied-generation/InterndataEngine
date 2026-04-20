@@ -37,6 +37,21 @@ Please refer to the [Installation](https://internrobotics.github.io/InternDataEn
 
 For more details, please check [Documentation](https://internrobotics.github.io/InternDataEngine-Docs/).
 
+## Split ROS / Isaac Sim Deployment
+
+The repository now includes an in-repo split deployment layout for running Isaac Sim and ROS/Nav2 as separate services:
+
+- `docker/isaac/`: Isaac Sim image and runtime entrypoint
+- `nav2/`: standalone Nav2 package containing container assets, ROS-side helpers, and shared client/runtime code
+
+Bring up the split stack with:
+
+```bash
+docker compose up --build isaac nav2
+```
+
+By default, the Isaac workflow writes external Nav2 runtime requests to `output/ros_bridge/runtime_requests`, and the ROS service watches that directory to launch or refresh the corresponding Nav2 stack.
+
 ## License and Citation
 All the code within this repo are under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). Please consider citing our papers if it helps your research.
 

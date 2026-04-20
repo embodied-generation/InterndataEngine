@@ -1,0 +1,46 @@
+{
+  "measured_with": "/workspace/isaac-sim/python.sh + pxr.UsdGeom.BBoxCache",
+  "assets": [
+    {
+      "name": "microwave_0001",
+      "path": "workflows/simbox/assets/art/microwave_gr/microwave_0001/instance.usd",
+      "raw_bbox_size_xyz": [49.896194876957495, 40.28439636230472, 29.061129760742197],
+      "task_scale_xyz": [0.012, 0.012, 0.012],
+      "world_bbox_size_xyz": [0.5987543385234899, 0.48341275634765667, 0.3487335571289064]
+    },
+    {
+      "name": "trashcan_0001",
+      "path": "workflows/simbox/assets/art/trashcan/trashcan_0001/instance.usd",
+      "raw_bbox_size_xyz": [21.003006177341943, 26.58022571951151, 31.306976318359382],
+      "task_scale_xyz": [0.018, 0.018, 0.018],
+      "world_bbox_size_xyz": [0.378054111192155, 0.4784440629512072, 0.5635255737304689]
+    },
+    {
+      "name": "washingmachine_0000",
+      "path": "workflows/simbox/assets/art/washingmachine_right/washingmachine_0000/instance.usd",
+      "raw_bbox_size_xyz": [60.25714874267578, 52.81878662109375, 86.2183837890625],
+      "task_scale_xyz": [0.01, 0.01, 0.01],
+      "world_bbox_size_xyz": [0.6025714874267578, 0.5281878662109375, 0.862183837890625]
+    }
+  ],
+  "gates": [
+    {
+      "name": "gate_a",
+      "left_obstacle": "gate_a_left_microwave",
+      "right_obstacle": "gate_a_right_washingmachine",
+      "clear_opening_m": 1.3500910870247523
+    },
+    {
+      "name": "gate_b",
+      "left_obstacle": "gate_b_left_trashcan",
+      "right_obstacle": "gate_b_right_microwave",
+      "clear_opening_m": 1.2685907751880365
+    },
+    {
+      "name": "gate_c",
+      "left_obstacle": "gate_c_left_washingmachine",
+      "right_obstacle": "gate_c_right_trashcan",
+      "clear_opening_m": 1.0599019783636124
+    }
+  ]
+}

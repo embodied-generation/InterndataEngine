@@ -19,21 +19,40 @@ class EnvPlanWithRender(Iterator):
         scene_iter (Iterator[Scene]): An iterator that yields scenes to be processed for planning and rendering.
     """
 
-    def __init__(self, scene_iter: Iterator[Scene]):
+    def __init__(
+        self,
+        scene_iter: Iterator[Scene],
+        emit_obs_on_failure: bool = True,
+        failure_obs_length: int = 1,
+    ):
         super().__init__()
         self.scene_iter = scene_iter
         self.episodes = 1
         self.current_episode = sys.maxsize
         self.scene = None
+        self.emit_obs_on_failure = emit_obs_on_failure
+        self.failure_obs_length = max(1, int(failure_obs_length))
 
     @status_monitor()
     def plan_with_render(self):
-        wf = self.scene.wf
+        scene = self.scene
+        if scene is None or scene.wf is None:
+            return None
+        wf = scene.wf
         obs_num = wf.plan_with_render()
         if obs_num <= 0:
-            return None
+            if not self.emit_obs_on_failure:
+                return None
+            # Emit a placeholder observation so writer can persist partial camera logs on failed episodes.
+            fallback_len = int(getattr(wf, "length", 0) or 0)
+            if fallback_len <= 0:
+                fallback_len = self.failure_obs_length
+            self.logger.info(
+                f"plan_with_render returned {obs_num}, emit placeholder observation with length {fallback_len}."
+            )
+            return Observations(scene.name, str(self.current_episode), length=fallback_len)
         # Assuming rgb is a dictionary of lists, get the length from one of the lists.
-        obs = Observations(self.scene.name, str(self.current_episode), length=obs_num)
+        obs = Observations(scene.name, str(self.current_episode), length=obs_num)
         return obs
 
     def _next(self):

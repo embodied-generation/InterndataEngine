@@ -1,0 +1,221 @@
+ros:
+  localization:
+    map_output_dir: output/nav2_maps
+  nav2:
+    enabled: true
+    runtime_mode: external_compose
+    stack_request_root: output/ros_bridge/runtime_requests
+    stack_status_root: output/ros_bridge/runtime_status
+    goal_request_root: output/ros_bridge/goal_requests
+    goal_status_root: output/ros_bridge/goal_status
+    goal_result_root: output/ros_bridge/goal_result
+    stack_reuse: true
+    goal_transport: ros_topic_bridge
+    load_map_service: /map_server/load_map
+    clear_global_costmap_service: /global_costmap/clear_entirely_global_costmap
+    clear_local_costmap_service: /local_costmap/clear_entirely_local_costmap
+    bridge_map_update_topic: /simbox/nav_bridge/map_update
+    bridge_goal_topic: /simbox/nav_bridge/goal
+    bridge_cancel_topic: /simbox/nav_bridge/cancel
+    bridge_status_topic: /simbox/nav_bridge/status
+    bridge_result_topic: /simbox/nav_bridge/result
+    bridge_alive_timeout_sec: 3.0
+nav2_skill:
+  inflation_radius_m: 0.34
+  planner_server:
+    plugin: nav2_smac_planner/SmacPlannerLattice
+    tolerance: 0.10
+    allow_unknown: false
+    downsample_costmap: false
+    max_iterations: 1000000
+    max_on_approach_iterations: 2000
+    max_planning_time: 3.0
+    smooth_path: true
+    minimum_turning_radius: 0.20
+    reverse_penalty: 1.0
+    change_penalty: 0.0
+    non_straight_penalty: 1.05
+    cost_penalty: 2.0
+    rotation_penalty: 3.0
+    retrospective_penalty: 0.015
+    analytic_expansion_ratio: 3.5
+    analytic_expansion_max_length: 2.5
+    analytic_expansion_max_cost: 200.0
+    analytic_expansion_max_cost_override: false
+    cache_obstacle_heuristic: true
+    allow_reverse_expansion: false
+    lattice_filepath: /opt/ros/humble/share/nav2_smac_planner/sample_primitives/5cm_resolution/0.5m_turning_radius/omni/output.json
+    smoother:
+      tolerance: 1.0e-10
+      max_iterations: 1000
+      w_data: 0.2
+      w_smooth: 0.3
+      do_refinement: true
+  controller_server:
+    controller_frequency: 20.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.001
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.8
+    progress_checker:
+      plugin: nav2_controller::SimpleProgressChecker
+      required_movement_radius: 0.05
+      movement_time_allowance: 90.0
+    goal_checker:
+      stateful: false
+      plugin: nav2_controller::SimpleGoalChecker
+    follow_path:
+      plugin: nav2_mppi_controller::MPPIController
+      time_steps: 40
+      model_dt: 0.05
+      batch_size: 1200
+      iteration_count: 1
+      prune_distance: 1.8
+      transform_tolerance: 0.3
+      temperature: 0.3
+      gamma: 0.015
+      motion_model: Omni
+      open_loop: false
+      visualize: false
+      regenerate_noises: false
+      reset_period: 1.0
+      retry_attempt_limit: 1
+      vx_max: 0.35
+      vx_min: -0.35
+      vy_max: 0.25
+      vy_min: -0.25
+      wz_max: 0.60
+      ax_max: 0.35
+      ax_min: -0.35
+      ay_max: 0.35
+      ay_min: -0.35
+      az_max: 0.70
+      vx_std: 0.12
+      vy_std: 0.14
+      wz_std: 0.25
+      TrajectoryVisualizer:
+        trajectory_step: 5
+        time_step: 3
+      TrajectoryValidator:
+        plugin: mppi::DefaultOptimalTrajectoryValidator
+        collision_lookahead_time: 2.0
+        consider_footprint: true
+      critics:
+        - ConstraintCritic
+        - CostCritic
+        - GoalCritic
+        - GoalAngleCritic
+        - PathAlignCritic
+        - PathFollowCritic
+        - PathAngleCritic
+        - TwirlingCritic
+      ConstraintCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 4.0
+      CostCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.8
+        critical_cost: 300.0
+        consider_footprint: true
+        collision_cost: 1000000.0
+        near_goal_distance: 0.4
+        trajectory_point_step: 2
+      GoalCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 1.4
+      GoalAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0
+        threshold_to_consider: 0.4
+      PathAlignCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 10.0
+        threshold_to_consider: 0.8
+        offset_from_furthest: 10
+        max_path_occupancy_ratio: 0.2
+        use_path_orientations: true
+      PathFollowCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 8.0
+        threshold_to_consider: 1.4
+        offset_from_furthest: 6
+      PathAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0
+        threshold_to_consider: 0.8
+        offset_from_furthest: 10
+        max_angle_to_furthest: 0.78539816339
+        mode: 2
+      TwirlingCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 8.0
+  local_costmap:
+    update_frequency: 10.0
+    publish_frequency: 4.0
+    global_frame: odom
+    rolling_window: true
+    width: 6
+    height: 6
+    resolution: 0.05
+    footprint_padding: 0.03
+    cost_scaling_factor: 3.0
+    always_send_full_costmap: true
+  global_costmap:
+    update_frequency: 4.0
+    publish_frequency: 2.0
+    global_frame: map
+    rolling_window: false
+    resolution: 0.05
+    track_unknown_space: false
+    footprint_padding: 0.03
+    cost_scaling_factor: 3.0
+    always_send_full_costmap: true
+  smoother_server:
+    plugin: nav2_smoother::SimpleSmoother
+    tolerance: 1.0e-10
+    max_its: 1000
+    do_refinement: true
+  behavior_server:
+    cycle_frequency: 10.0
+    behavior_plugins:
+      - wait
+    wait:
+      plugin: nav2_behaviors/Wait
+    transform_tolerance: 0.2
+    simulate_ahead_time: 2.0
+    max_rotational_vel: 0.35
+    min_rotational_vel: 0.1
+    rotational_acc_lim: 1.0
+  velocity_smoother:
+    smoothing_frequency: 20.0
+    scale_velocities: false
+    feedback: CLOSED_LOOP
+    max_velocity: [0.35, 0.25, 0.60]
+    min_velocity: [-0.35, -0.25, -0.60]
+    max_accel: [0.35, 0.35, 0.70]
+    max_decel: [-0.35, -0.35, -0.70]
+    odom_duration: 0.1
+    deadband_velocity: [0.0, 0.0, 0.0]
+    velocity_timeout: 1.0
+  bt_navigator:
+    plugin_lib_names:
+      - nav2_compute_path_to_pose_action_bt_node
+      - nav2_compute_path_through_poses_action_bt_node
+      - nav2_smooth_path_action_bt_node
+      - nav2_follow_path_action_bt_node
+      - nav2_clear_costmap_service_bt_node
+      - nav2_goal_updated_condition_bt_node
+      - nav2_rate_controller_bt_node
+      - nav2_pipeline_sequence_bt_node
+      - nav2_navigate_through_poses_action_bt_node
+      - nav2_navigate_to_pose_action_bt_node
+      - nav2_remove_passed_goals_action_bt_node

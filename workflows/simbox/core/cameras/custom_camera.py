@@ -11,6 +11,80 @@ from omni.isaac.core.utils.transformations import (
 from omni.isaac.sensor import Camera
 
 
+def _patch_syntheticdata_headless_rendervar():
+    """Allow SyntheticData render-var registration to fall back to USD editing in headless mode.
+
+    Isaac Sim 4.1's SyntheticData implementation first tries the legacy viewport API and only
+    falls back to direct USD edits if that path is unavailable. In headless mode the viewport
+    module imports, but acquiring IViewport raises RuntimeError instead of ImportError, which
+    aborts camera initialization before the USD fallback runs.
+    """
+
+    try:
+        from omni.syntheticdata.scripts.SyntheticData import SyntheticData
+    except Exception:
+        return
+
+    if getattr(SyntheticData, "_simbox_headless_patch_applied", False):
+        return
+
+    original_add = SyntheticData._add_rendervar
+    original_remove = SyntheticData._remove_rendervar
+
+    def _safe_call(func, render_product_path: str, render_var: str, usd_stage=None):
+        try:
+            return func(render_product_path, render_var, usd_stage)
+        except RuntimeError as exc:
+            if "omni::kit::IViewport" not in str(exc):
+                raise
+
+            import omni.usd
+            from pxr import Sdf, Usd
+
+            if not usd_stage:
+                usd_stage = omni.usd.get_context().get_stage()
+                if not usd_stage:
+                    raise
+
+            with Usd.EditContext(usd_stage, usd_stage.GetSessionLayer()):
+                render_product_prim = usd_stage.GetPrimAtPath(render_product_path)
+                if not render_product_prim:
+                    raise
+                render_var_prim_path = f"/Render/Vars/{render_var}"
+                render_product_render_var_rel = render_product_prim.GetRelationship("orderedVars")
+                if func is original_add:
+                    render_var_prim = usd_stage.GetPrimAtPath(render_var_prim_path)
+                    if not render_var_prim:
+                        render_var_prim = usd_stage.DefinePrim(render_var_prim_path)
+                    render_var_prim.CreateAttribute("sourceName", Sdf.ValueTypeNames.String).Set(render_var)
+                    render_var_prim.SetMetadata("hide_in_stage_window", True)
+                    render_var_prim.SetMetadata("no_delete", True)
+                    if not render_product_render_var_rel:
+                        render_product_render_var_rel = render_product_prim.CreateRelationship("orderedVars")
+                    if render_product_render_var_rel:
+                        render_product_render_var_rel.AddTarget(render_var_prim_path)
+                else:
+                    if render_var == "LdrColor":
+                        return
+                    if render_product_render_var_rel:
+                        render_product_render_var_rel.RemoveTarget(render_var_prim_path)
+
+    @staticmethod
+    def _patched_add_rendervar(render_product_path: str, render_var: str, usd_stage=None) -> None:
+        _safe_call(original_add, render_product_path, render_var, usd_stage)
+
+    @staticmethod
+    def _patched_remove_rendervar(render_product_path: str, render_var: str, usd_stage=None) -> None:
+        _safe_call(original_remove, render_product_path, render_var, usd_stage)
+
+    SyntheticData._add_rendervar = _patched_add_rendervar
+    SyntheticData._remove_rendervar = _patched_remove_rendervar
+    SyntheticData._simbox_headless_patch_applied = True
+
+
+_patch_syntheticdata_headless_rendervar()
+
+
 @register_camera
 class CustomCamera(Camera):
     """Generic pinhole RGB-D camera used in simbox tasks."""

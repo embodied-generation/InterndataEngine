@@ -17,6 +17,7 @@ from .home import Home
 from .joint_ctrl import Joint_Ctrl
 from .manualpick import Manualpick
 from .move import Move
+from .nav2_navigate import Nav2_Navigate
 from .open import Open
 from .pick import Pick
 from .place import Place
@@ -43,6 +44,7 @@ __all__ = [
     "Home",
     "Joint_Ctrl",
     "Move",
+    "Nav2_Navigate",
     "Open",
     "Pick",
     "Manualpick",

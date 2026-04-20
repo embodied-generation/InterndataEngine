@@ -1,0 +1,149 @@
+# SplitAloha navigation-only task with static asset obstacles.
+# Asset dimensions below are measured from the USD files with Isaac's pxr/UsdGeom BBoxCache
+# and then scaled by the task scales used here:
+#
+# - washingmachine_0000 @ scale 0.010 -> world size ~= [0.6026, 0.5282, 0.8622]
+# - trashcan_0001 @ scale 0.018 -> world size ~= [0.3781, 0.4784, 0.5635]
+#
+# The three obstacle gates are laid out from these measured widths:
+# - gate_a opening ~= 1.220 m
+# - gate_b opening ~= 1.420 m
+# - gate_c opening ~= 1.120 m
+# This keeps the course focused on navigation geometry and static avoidance only.
+
+tasks:
+- name: nav2_asset_slalom_task
+  asset_root: workflows/simbox/assets
+  task: BananaBaseTask
+  task_id: 0
+  offset: null
+  render: true
+  arena_file: workflows/simbox/core/configs/arenas/nav2_floor_arena.yaml
+  env_map:
+    envmap_lib: envmap_lib
+    apply_randomization: false
+    intensity_range: [5000, 5000]
+    rotation_range: [0, 0]
+  robots:
+  - name: split_aloha
+    robot_config_file: workflows/simbox/core/configs/robots/split_aloha.yaml
+    euler: [0.0, 0.0, 90.0]
+    left_joint_home: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    right_joint_home: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    left_gripper_home: [0.0]
+    right_gripper_home: [0.0]
+    ignore_substring:
+    - material
+    - table
+    - plate
+    - beef
+    - lettuce
+    - bread
+  objects:
+  - name: gate_a_right_washingmachine
+    path: art/washingmachine_right/washingmachine_0000/instance.usd
+    target_class: GeometryObject
+    prim_path_child: root
+    translation: [1.05, 1.75, 0.43110]
+    euler: [0.0, 0.0, 0.0]
+    scale: [0.010, 0.010, 0.010]
+    apply_randomization: false
+  - name: gate_a_left_trashcan
+    path: art/trashcan/trashcan_0001/instance.usd
+    target_class: GeometryObject
+    prim_path_child: root
+    translation: [-0.55, 1.75, 0.28175]
+    euler: [0.0, 0.0, 0.0]
+    scale: [0.018, 0.018, 0.018]
+    apply_randomization: false
+  - name: gate_b_left_trashcan
+    path: art/trashcan/trashcan_0001/instance.usd
+    target_class: GeometryObject
+    prim_path_child: root
+    translation: [-1.10, 3.10, 0.28175]
+    euler: [0.0, 0.0, 0.0]
+    scale: [0.018, 0.018, 0.018]
+    apply_randomization: false
+  - name: gate_b_right_trashcan
+    path: art/trashcan/trashcan_0001/instance.usd
+    target_class: GeometryObject
+    prim_path_child: root
+    translation: [0.70, 3.10, 0.28175]
+    euler: [0.0, 0.0, 90.0]
+    scale: [0.018, 0.018, 0.018]
+    apply_randomization: false
+  - name: gate_c_left_washingmachine
+    path: art/washingmachine_right/washingmachine_0000/instance.usd
+    target_class: GeometryObject
+    prim_path_child: root
+    translation: [-0.90, 4.45, 0.43110]
+    euler: [0.0, 0.0, 0.0]
+    scale: [0.010, 0.010, 0.010]
+    apply_randomization: false
+  - name: gate_c_right_trashcan
+    path: art/trashcan/trashcan_0001/instance.usd
+    target_class: GeometryObject
+    prim_path_child: root
+    translation: [0.60, 4.45, 0.28175]
+    euler: [0.0, 0.0, 90.0]
+    scale: [0.018, 0.018, 0.018]
+    apply_randomization: false
+  regions:
+  - object: split_aloha
+    target: floor
+    random_type: A_on_B_region_sampler
+    random_config:
+      pos_range:
+      - [0.0, 0.0, 0.0]
+      - [0.0, 0.0, 0.0]
+      yaw_rotation: [0.0, 0.0]
+  cameras:
+  - name: nav2_global
+    translation: [0.0, 2.70, 6.00]
+    orientation: [1.0, 0.0, 0.0, 0.0]
+    camera_axes: usd
+    camera_file: workflows/simbox/core/configs/cameras/realsense_d455_v3.yaml
+    parent: ""
+    apply_randomization: false
+  - name: split_aloha_hand_left
+    translation: [0.0, 0.08, 0.05]
+    orientation: [0.0, 0.0, 0.965, 0.259]
+    camera_axes: usd
+    camera_file: workflows/simbox/core/configs/cameras/astra.yaml
+    parent: split_aloha/split_aloha_mid_360_with_piper/split_aloha_mid_360_with_piper/fl/link6
+    apply_randomization: false
+  - name: split_aloha_hand_right
+    translation: [0.0, 0.08, 0.04]
+    orientation: [0.0, 0.0, 0.972, 0.233]
+    camera_axes: usd
+    camera_file: workflows/simbox/core/configs/cameras/astra.yaml
+    parent: split_aloha/split_aloha_mid_360_with_piper/split_aloha_mid_360_with_piper/fr/link6
+    apply_randomization: false
+  - name: split_aloha_head
+    translation: [0.0, -0.00818, 0.1]
+    orientation: [0.658, 0.259, -0.282, -0.648]
+    camera_axes: usd
+    camera_file: workflows/simbox/core/configs/cameras/realsense_d455_v3.yaml
+    parent: split_aloha/split_aloha_mid_360_with_piper/split_aloha_mid_360_with_piper/top_camera_link
+    apply_randomization: false
+  data:
+    task_dir: nav2_asset_slalom
+    language_instruction: Navigate the mobile base through the asset slalom and stop at the goal pose.
+    detailed_language_instruction: Drive the SplitAloha base through a static slalom built from real repository USD assets and stop at the final pose without any manipulation actions.
+    collect_info: nav2_asset_slalom
+    version: v1.0
+    update: true
+    max_episode_length: 2800
+  skills:
+  - split_aloha:
+    - left:
+      - name: nav2__navigate
+        goal_x: -0.10
+        goal_y: 5.35
+        goal_yaw: 1.5707963267948966
+        xy_goal_tolerance: 0.1
+        yaw_goal_tolerance: 0.1
+        startup_timeout_sec: 60.0
+        runtime_timeout_sec: 240.0
+        output_root: output/ros_bridge/skills
+        scene_name: nav2_asset_slalom
