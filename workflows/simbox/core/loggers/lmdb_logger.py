@@ -3,6 +3,8 @@ import json
 import importlib
 import os
 import pickle
+import shutil
+import subprocess
 from pathlib import Path
 
 import lmdb
@@ -15,6 +17,17 @@ DEFAULT_RGB_SCALE_FACTOR = 256000.0
 
 def _import_cv2():
     return importlib.import_module("cv2")
+
+
+def _import_imageio_ffmpeg():
+    return importlib.import_module("imageio_ffmpeg")
+
+
+def _resolve_ffmpeg_path():
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path:
+        return ffmpeg_path
+    return _import_imageio_ffmpeg().get_ffmpeg_exe()
 
 
 def _normalize_rgb_frame(frame):
@@ -30,20 +43,44 @@ def _normalize_rgb_frame(frame):
     return image
 
 
-def _save_rgb_video(cv2, output_path, frames, fps=15):
+def _save_rgb_video(ffmpeg_path, output_path, frames, fps=15):
     if not frames:
         return
 
     first_frame = _normalize_rgb_frame(frames[0])
     height, width = first_frame.shape[:2]
-    writer = cv2.VideoWriter(
+    cmd = [
+        ffmpeg_path,
+        "-y",
+        "-f",
+        "rawvideo",
+        "-vcodec",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "-s",
+        f"{width}x{height}",
+        "-r",
+        str(fps),
+        "-i",
+        "-",
+        "-an",
+        "-vcodec",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
         str(output_path),
-        cv2.VideoWriter_fourcc(*"H264"),
-        fps,
-        (width, height),
+    ]
+    process = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
     )
-    if not writer.isOpened():
-        raise RuntimeError(f"Failed to open video writer for {output_path}")
+    if process.stdin is None:
+        raise RuntimeError(f"Failed to open ffmpeg stdin for {output_path}")
 
     try:
         for frame in frames:
@@ -53,9 +90,20 @@ def _save_rgb_video(cv2, output_path, frames, fps=15):
                     f"Inconsistent video frame size for {output_path}: "
                     f"expected {(height, width)}, got {rgb_frame.shape[:2]}"
                 )
-            writer.write(cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR))
+            process.stdin.write(rgb_frame.tobytes())
     finally:
-        writer.release()
+        stderr = b""
+        try:
+            process.stdin.close()
+        except Exception:
+            pass
+        stderr = process.stderr.read() if process.stderr is not None else b""
+        return_code = process.wait()
+        if return_code != 0:
+            stderr_text = stderr.decode("utf-8", errors="replace").strip()
+            raise RuntimeError(
+                f"ffmpeg failed for {output_path} with exit code {return_code}: {stderr_text}"
+            )
 
 
 def float_array_to_uint16_png(float_array):
@@ -103,6 +151,7 @@ class LmdbLogger(BaseLogger):
 
     def save(self, this_save_dir, timestamp: str, save_img: bool = True):
         cv2 = _import_cv2() if save_img else None
+        ffmpeg_path = _resolve_ffmpeg_path() if save_img else None
         for robot_idx, robot_name in enumerate(self.proprio_data_logger.keys()):
             save_dir = Path(this_save_dir)
             save_dir = save_dir / f"{robot_name}" / f"{self.task_dir}" / f"{self.collect_info}" / f"{timestamp}"
@@ -216,7 +265,7 @@ class LmdbLogger(BaseLogger):
                         )
                         meta_info["keys"][key].append(f"{key}/{step_id}".encode("utf-8"))
 
-                    _save_rgb_video(cv2, root_img_path / "demo.mp4", value, fps=15)
+                    _save_rgb_video(ffmpeg_path, root_img_path / "demo.mp4", value, fps=15)
 
                 for key, value in self.depth_image_logger.get(robot_name, {}).items():
                     root_img_path = save_dir / f"{key}"
