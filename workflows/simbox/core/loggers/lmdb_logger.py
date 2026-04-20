@@ -38,7 +38,7 @@ def _save_rgb_video(cv2, output_path, frames, fps=15):
     height, width = first_frame.shape[:2]
     writer = cv2.VideoWriter(
         str(output_path),
-        cv2.VideoWriter_fourcc(*"mp4v"),
+        cv2.VideoWriter_fourcc(*"H264"),
         fps,
         (width, height),
     )

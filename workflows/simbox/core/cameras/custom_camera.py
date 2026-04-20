@@ -2,12 +2,8 @@ import numpy as np
 import omni.replicator.core as rep
 from core.cameras.base_camera import register_camera
 from core.utils.camera_utils import get_src
-from omni.isaac.core.prims import XFormPrim
 from omni.isaac.core.utils.prims import get_prim_at_path
-from omni.isaac.core.utils.transformations import (
-    get_relative_transform,
-    pose_from_tf_matrix,
-)
+from omni.isaac.core.utils.transformations import get_relative_transform
 from omni.isaac.sensor import Camera
 
 
@@ -89,7 +85,7 @@ _patch_syntheticdata_headless_rendervar()
 class CustomCamera(Camera):
     """Generic pinhole RGB-D camera used in simbox tasks."""
 
-    def __init__(self, cfg, prim_path, root_prim_path, reference_path, name, *args, **kwargs):
+    def __init__(self, cfg, prim_path, root_prim_path, name, *args, **kwargs):
         """
         Args:
             cfg: Config dict with required keys:
@@ -103,7 +99,6 @@ class CustomCamera(Camera):
                 - output_mode (optional): "rgb" or "diffuse_albedo"
             prim_path: Camera prim path in USD stage
             root_prim_path: Root prim path in USD stage
-            reference_path: Reference prim path for camera mounting
             name: Camera name
         """
         # ===== Initialize camera =====
@@ -163,10 +158,7 @@ class CustomCamera(Camera):
         fy = height * self.get_focal_length() / self.get_vertical_aperture()
         self.is_camera_matrix = np.array([[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]])
 
-        self.reference_path = reference_path
         self.root_prim_path = root_prim_path
-        self.parent_camera_prim_path = str(self.prim.GetParent().GetPath())
-        self.parent_camera_xform = XFormPrim(self.parent_camera_prim_path)
 
         if self.output_mode == "diffuse_albedo":
             self.add_diffuse_albedo_to_frame()
@@ -224,15 +216,6 @@ class CustomCamera(Camera):
         self._current_frame.pop("IndirectDiffuse", None)
 
     def get_observations(self):
-        if self.reference_path:
-            camera_mount2env_pose = get_relative_transform(
-                get_prim_at_path(self.reference_path), get_prim_at_path(self.root_prim_path)
-            )
-            camera_mount2env_pose = pose_from_tf_matrix(camera_mount2env_pose)
-            self.parent_camera_xform.set_local_pose(
-                translation=camera_mount2env_pose[0],
-                orientation=camera_mount2env_pose[1],
-            )
         camera2env_pose = get_relative_transform(
             get_prim_at_path(self.prim_path), get_prim_at_path(self.root_prim_path)
         )

@@ -6,7 +6,7 @@ export CUROBO_PATH="${CUROBO_PATH:-/opt/curobo}"
 export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
 export INTERNDATA_AUTOSTART_LAUNCHER="${INTERNDATA_AUTOSTART_LAUNCHER:-0}"
-export INTERNDATA_LAUNCHER_CONFIG="${INTERNDATA_LAUNCHER_CONFIG:-configs/simbox/de_plan_with_render_template.yaml}"
+export INTERNDATA_LAUNCHER_CONFIG="${INTERNDATA_LAUNCHER_CONFIG:-configs/de_plan_with_render_template.yaml}"
 
 for lib_dir in \
   "${ISAAC_SIM_PATH}/exts/omni.isaac.ros2_bridge/humble/lib" \

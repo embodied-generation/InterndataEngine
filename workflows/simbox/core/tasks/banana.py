@@ -261,13 +261,24 @@ class BananaBaseTask(BaseTask):
 
     def _load_camera(self, cfg):
         cameras_root = os.path.join(self.root_prim_path, "cameras")
-        camera_prim_path = os.path.join(cameras_root, cfg["name"], "camera")
-        camera_reference_path = os.path.join(self.root_prim_path, cfg["parent"]) if cfg["parent"] else ""
+        parent_cfg = str(cfg.get("parent", "") or "").strip()
+        if parent_cfg:
+            camera_parent_path = parent_cfg if parent_cfg.startswith("/") else os.path.join(self.root_prim_path, parent_cfg)
+            if not is_prim_path_valid(camera_parent_path):
+                raise ValueError(f"Camera parent prim does not exist: {camera_parent_path}")
+            camera_mount_path = os.path.join(camera_parent_path, f"{cfg['name']}_mount")
+            mount_paths = [camera_mount_path]
+        else:
+            camera_mount_path = os.path.join(cameras_root, cfg["name"])
+            mount_paths = [cameras_root, camera_mount_path]
 
-        if not is_prim_path_valid(os.path.join(cameras_root, cfg["name"])):
-            for path in [cameras_root, os.path.join(cameras_root, cfg["name"])]:
-                xform = XFormPrim(prim_path=path)
-                xform.set_local_pose(translation=[0.0, 0.0, 0.0], orientation=[1.0, 0.0, 0.0, 0.0])
+        camera_prim_path = os.path.join(camera_mount_path, "camera")
+
+        for path in mount_paths:
+            if is_prim_path_valid(path):
+                continue
+            xform = XFormPrim(prim_path=path)
+            xform.set_local_pose(translation=[0.0, 0.0, 0.0], orientation=[1.0, 0.0, 0.0, 0.0])
 
         # Load camera params from external file if camera_file is specified
         camera_file_path = cfg["camera_file"]
@@ -280,8 +291,7 @@ class BananaBaseTask(BaseTask):
         camera = CustomCamera(
             cfg=cfg,
             prim_path=camera_prim_path,
-            root_prim_path=cameras_root,
-            reference_path=camera_reference_path,
+            root_prim_path=self.root_prim_path,
             name=cfg["name"],
         )
 

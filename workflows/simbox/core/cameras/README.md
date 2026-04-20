@@ -21,7 +21,7 @@ Camera behavior is controlled by the config (`cfg`) passed into `CustomCamera.__
 Each camera entry in the YAML should provide:
 
 - **`name`**: Unique camera name (string). Used for prim paths and as the key in `task.cameras`.
-- **`parent`**: Optional prim path (under the task root) that the camera mount is attached to. Empty string (`""`) means no specific parent.
+- **`parent`**: Optional prim path (under the task root) used as the camera's real USD parent. Empty string (`""`) means the camera is created under the task's standalone `cameras/` tree.
 - **`translation`**: Initial camera translation in world or parent frame, as a list of three floats `[x, y, z]` (meters).
 - **`orientation`**: Initial camera orientation as a quaternion `[w, x, y, z]`.
 - **`camera_axes`**: Axes convention for `set_local_pose` (e.g. `[1.0, 0.0, 0.0]` etc. – follow existing configs).
@@ -35,6 +35,8 @@ camera.set_local_pose(
     camera_axes=cfg["camera_axes"],
 )
 ```
+
+When `parent` is set, `banana.py` creates a `<camera_name>_mount/camera` hierarchy directly under that prim, so the camera follows robot or object motion through normal USD parent-child transforms. There is no runtime pose mirroring step.
 
 ### 2. Required `params` fields
 
